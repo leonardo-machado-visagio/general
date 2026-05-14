@@ -1,0 +1,122 @@
+{
+   "checksum": "abc123",
+   "roots": {
+      "bookmark_bar": {
+         "children": [
+            {
+               "date_added": "13350000000000000",
+               "id": "10",
+               "name": "GitHub",
+               "type": "url",
+               "url": "https://github.com"
+            },
+            {
+               "date_added": "13350000000000001",
+               "id": "11",
+               "name": "Stack Overflow",
+               "type": "url",
+               "url": "https://stackoverflow.com/questions"
+            },
+            {
+               "children": [
+                  {
+                     "date_added": "13350000000000002",
+                     "id": "20",
+                     "name": "Curso de Python",
+                     "type": "url",
+                     "url": "https://www.udemy.com/course/python"
+                  },
+                  {
+                     "children": [
+                        {
+                           "date_added": "13350000000000003",
+                           "id": "21",
+                           "name": "Coursera ML",
+                           "type": "url",
+                           "url": "https://coursera.org/learn/machine-learning"
+                        }
+                     ],
+                     "date_added": "13350000000000004",
+                     "id": "30",
+                     "name": "Subpasta",
+                     "type": "folder"
+                  }
+               ],
+               "date_added": "13350000000000005",
+               "id": "31",
+               "name": "Cursos",
+               "type": "folder"
+            },
+            {
+               "date_added": "13350000000000006",
+               "id": "12",
+               "name": "YouTube",
+               "type": "url",
+               "url": "https://www.youtube.com"
+            },
+            {
+               "date_added": "13350000000000007",
+               "id": "13",
+               "name": "Notion",
+               "type": "url",
+               "url": "https://www.notion.so/workspace"
+            },
+            {
+               "date_added": "13350000000000008",
+               "id": "14",
+               "name": "GitHub Duplicado",
+               "type": "url",
+               "url": "https://github.com"
+            }
+         ],
+         "date_added": "13340000000000000",
+         "id": "1",
+         "name": "Barra de favoritos",
+         "type": "folder"
+      },
+      "other": {
+         "children": [
+            {
+               "date_added": "13350000000000009",
+               "id": "40",
+               "name": "Twitter",
+               "type": "url",
+               "url": "https://twitter.com/home"
+            },
+            {
+               "date_added": "13350000000000010",
+               "id": "41",
+               "name": "ChatGPT",
+               "type": "url",
+               "url": "https://chatgpt.com"
+            },
+            {
+               "date_added": "13350000000000011",
+               "id": "42",
+               "name": "Página estranha",
+               "type": "url",
+               "url": "not-a-valid-url"
+            },
+            {
+               "children": [],
+               "date_added": "13350000000000012",
+               "id": "43",
+               "name": "Pasta Vazia",
+               "type": "folder"
+            }
+         ],
+         "date_added": "13340000000000001",
+         "id": "2",
+         "name": "Outros favoritos",
+         "type": "folder"
+      },
+      "synced": {
+         "children": [],
+         "date_added": "13340000000000002",
+         "id": "3",
+         "name": "Favoritos do celular",
+         "type": "folder"
+      }
+   },
+   "version": 1
+}
