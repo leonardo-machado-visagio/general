@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerenciador de Bookmarks do Chrome</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface-2: #273449;
+    --surface-3: #334155;
+    --border: #334155;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --success: #10b981;
+    --radius: 8px;
+    --radius-sm: 4px;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  }
+
+  :root[data-theme="light"] {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface-2: #f1f5f9;
+    --surface-3: #e2e8f0;
+    --border: #cbd5e1;
+    --text: #0f172a;
+    --text-muted: #475569;
+    --text-dim: #94a3b8;
+    --shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+      Ubuntu, Cantarell, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  header h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  header .actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-left: auto;
+  }
+
+  button {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+
+  button:hover:not(:disabled) {
+    background: var(--surface-3);
+    border-color: var(--text-dim);
+  }
+
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  button.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  button.primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+
+  button.danger {
+    border-color: transparent;
+  }
+
+  button.danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+
+  input[type="search"], input[type="text"] {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-family: inherit;
+    min-width: 200px;
+  }
+
+  input[type="search"]:focus, input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  main {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+  }
+
+  /* === Empty state === */
+  #empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+  }
+
+  #empty-state.hidden {
+    display: none;
+  }
+
+  .drop-zone {
+    width: 100%;
+    max-width: 500px;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 40px 24px;
+    transition: all 0.2s;
+    cursor: pointer;
+    background: var(--surface);
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--surface-2);
+  }
+
+  .drop-zone p {
+    margin: 0 0 8px;
+    font-size: 16px;
+    color: var(--text);
+  }
+
+  .drop-zone .hint {
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .drop-zone input[type="file"] {
+    display: none;
+  }
+
+  .help-box {
+    margin-top: 32px;
+    max-width: 600px;
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+
+  .help-box h3 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .help-box p {
+    margin: 6px 0;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .help-box code {
+    background: var(--surface-2);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  /* === Loaded state === */
+  #app {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  #app.hidden {
+    display: none;
+  }
+
+  aside#stats {
+    width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  aside#stats h2 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  aside#stats .stat-block {
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+
+  aside#stats .stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  aside#stats .stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin-top: 2px;
+  }
+
+  aside#stats .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+
+  aside#stats h3 {
+    margin: 16px 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  aside#stats .domain-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  aside#stats .domain-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+  }
+
+  aside#stats .domain-list li:last-child {
+    border-bottom: none;
+  }
+
+  aside#stats .domain-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 8px;
+  }
+
+  aside#stats .domain-count {
+    color: var(--accent);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  /* === Categories grid === */
+  section#categories {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-auto-rows: max-content;
+    gap: 12px;
+    align-content: start;
+  }
+
+  .category {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--cat-color, var(--accent));
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 70vh;
+    transition: box-shadow 0.15s, transform 0.15s;
+  }
+
+  .category.drag-over {
+    box-shadow: 0 0 0 2px var(--cat-color, var(--accent));
+    transform: translateY(-2px);
+  }
+
+  .category-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    gap: 8px;
+    background: var(--surface);
+  }
+
+  .category-name {
+    flex: 1;
+    font-weight: 600;
+    color: var(--text);
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    cursor: text;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .category-name:hover {
+    background: var(--surface-2);
+  }
+
+  .category-name[contenteditable="true"] {
+    background: var(--surface-2);
+    outline: 1px solid var(--accent);
+  }
+
+  .category-badge {
+    background: var(--surface-2);
+    color: var(--text-muted);
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 24px;
+    text-align: center;
+  }
+
+  .category-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .category-actions button {
+    padding: 4px 6px;
+    font-size: 12px;
+    background: transparent;
+    border-color: transparent;
+  }
+
+  .category-actions button:hover {
+    background: var(--surface-2);
+    border-color: var(--border);
+  }
+
+  .bookmarks-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px 8px;
+    min-height: 60px;
+  }
+
+  .bookmarks-list:empty::after {
+    content: "Arraste bookmarks aqui";
+    display: block;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 12px;
+    padding: 20px 8px;
+    font-style: italic;
+  }
+
+  .bookmark {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    cursor: grab;
+    transition: background 0.1s;
+    margin-bottom: 2px;
+    border: 1px solid transparent;
+  }
+
+  .bookmark:hover {
+    background: var(--surface-2);
+    border-color: var(--border);
+  }
+
+  .bookmark.dragging {
+    opacity: 0.4;
+  }
+
+  .bookmark.duplicate {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+
+  .bookmark-favicon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border-radius: 2px;
+    background: var(--surface-3);
+  }
+
+  .bookmark-info {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .bookmark-name {
+    font-size: 13px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bookmark-url {
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  .bookmark-actions {
+    display: none;
+    gap: 2px;
+  }
+
+  .bookmark:hover .bookmark-actions {
+    display: flex;
+  }
+
+  .bookmark-actions button {
+    padding: 2px 5px;
+    font-size: 11px;
+    background: transparent;
+    border-color: transparent;
+  }
+
+  .bookmark-actions button:hover {
+    background: var(--surface-3);
+  }
+
+  /* === Modal === */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .modal-backdrop.hidden { display: none; }
+
+  .modal {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 20px;
+    min-width: 320px;
+    max-width: 500px;
+    box-shadow: var(--shadow);
+  }
+
+  .modal h2 {
+    margin: 0 0 12px;
+    font-size: 16px;
+  }
+
+  .modal p {
+    margin: 0 0 16px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .modal .input-row {
+    margin-bottom: 16px;
+  }
+
+  .modal input {
+    width: 100%;
+  }
+
+  .modal .buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  /* === Toast === */
+  .toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .toast {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+    font-size: 13px;
+    min-width: 200px;
+    max-width: 400px;
+    animation: slide-in 0.2s ease-out;
+  }
+
+  .toast.success { border-left-color: var(--success); }
+  .toast.warning { border-left-color: var(--warning); }
+  .toast.danger { border-left-color: var(--danger); }
+
+  @keyframes slide-in {
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* === Util === */
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Gerenciador de Bookmarks</h1>
+  <div class="actions">
+    <input type="search" id="search" placeholder="Buscar bookmarks..." disabled>
+    <button id="btn-recategorize" disabled title="Recategorizar todos os bookmarks usando as regras">Recategorizar</button>
+    <button id="btn-dedupe" disabled title="Remover bookmarks com URL duplicada">Remover duplicados</button>
+    <button id="btn-add-category" disabled title="Adicionar uma nova categoria">+ Categoria</button>
+    <button id="btn-undo" disabled title="Desfazer última ação (Ctrl+Z)">↶ Desfazer</button>
+    <button id="btn-theme" title="Alternar tema claro/escuro">☾</button>
+    <button id="btn-reload" disabled title="Carregar outro arquivo">Recarregar</button>
+    <button id="btn-export" class="primary" disabled title="Exportar arquivo Bookmarks reorganizado">Exportar</button>
+  </div>
+</header>
+
+<main>
+  <div id="empty-state">
+    <label for="file-input" class="drop-zone" id="drop-zone">
+      <p>Arraste o arquivo <strong>Bookmarks</strong> aqui</p>
+      <p class="hint">ou clique para selecionar</p>
+      <input type="file" id="file-input" accept=".json,application/json">
+    </label>
+    <div class="help-box">
+      <h3>Onde encontrar o arquivo Bookmarks?</h3>
+      <p><strong>Linux:</strong> <code>~/.config/google-chrome/Default/Bookmarks</code></p>
+      <p><strong>macOS:</strong> <code>~/Library/Application Support/Google/Chrome/Default/Bookmarks</code></p>
+      <p><strong>Windows:</strong> <code>%LOCALAPPDATA%\Google\Chrome\User Data\Default\Bookmarks</code></p>
+      <p style="margin-top:12px"><em>O arquivo é processado localmente no navegador. Nada é enviado para servidores externos.</em></p>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
+    <aside id="stats">
+      <h2>Estatísticas</h2>
+      <div class="stat-grid">
+        <div class="stat-block">
+          <div class="stat-label">Total</div>
+          <div class="stat-value" id="stat-total">0</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Categorias</div>
+          <div class="stat-value" id="stat-categories">0</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Duplicados</div>
+          <div class="stat-value" id="stat-duplicates">0</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Domínios</div>
+          <div class="stat-value" id="stat-domains">0</div>
+        </div>
+      </div>
+      <h3>Top Domínios</h3>
+      <ul class="domain-list" id="top-domains"></ul>
+    </aside>
+    <section id="categories"></section>
+  </div>
+</main>
+
+<div class="modal-backdrop hidden" id="modal-backdrop">
+  <div class="modal">
+    <h2 id="modal-title"></h2>
+    <p id="modal-message"></p>
+    <div class="input-row hidden" id="modal-input-row">
+      <input type="text" id="modal-input">
+    </div>
+    <div class="buttons">
+      <button id="modal-cancel">Cancelar</button>
+      <button id="modal-confirm" class="primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+'use strict';
+
+/* ================================================================
+ * Regras de categorização (porta de bookmarks_manager/categorizer.py)
+ * ================================================================ */
+const CATEGORY_OTHER = 'Outros';
+
+const RULES = [
+  {
+    name: 'Desenvolvimento',
+    color: '#3b82f6',
+    domains: [
+      'github.com', 'gitlab.com', 'bitbucket.org', 'stackoverflow.com',
+      'stackexchange.com', 'npmjs.com', 'pypi.org', 'rubygems.org',
+      'crates.io', 'packagist.org', 'docker.com', 'hub.docker.com',
+      'kubernetes.io', 'dev.to', 'hashnode.com', 'codepen.io',
+      'jsfiddle.net', 'replit.com', 'codesandbox.io', 'go.dev',
+      'rust-lang.org', 'python.org', 'nodejs.org', 'mozilla.org',
+      'mdn.io', 'developer.mozilla.org', 'regex101.com',
+    ],
+    keywords: ['docs', 'documentation', 'api', 'sdk', 'github', 'tutorial'],
+  },
+  {
+    name: 'Aprendizado',
+    color: '#8b5cf6',
+    domains: [
+      'udemy.com', 'coursera.org', 'edx.org', 'khanacademy.org',
+      'codecademy.com', 'freecodecamp.org', 'pluralsight.com',
+      'leetcode.com', 'hackerrank.com', 'exercism.io', 'scrimba.com',
+      'alura.com.br', 'rocketseat.com.br', 'domestika.org', 'skillshare.com',
+    ],
+    keywords: ['curso', 'course', 'tutorial', 'aprenda', 'learn'],
+  },
+  {
+    name: 'IA e Pesquisa',
+    color: '#a855f7',
+    domains: [
+      'chatgpt.com', 'chat.openai.com', 'openai.com', 'claude.ai',
+      'anthropic.com', 'gemini.google.com', 'bard.google.com',
+      'perplexity.ai', 'huggingface.co', 'kaggle.com', 'arxiv.org',
+      'papers.with.code', 'paperswithcode.com', 'scholar.google.com',
+    ],
+    keywords: ['llm', 'gpt', 'ml', 'ai-research'],
+  },
+  {
+    name: 'Redes Sociais',
+    color: '#ec4899',
+    domains: [
+      'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
+      'linkedin.com', 'reddit.com', 'tiktok.com', 'snapchat.com',
+      'threads.net', 'bsky.app', 'mastodon.social', 'pinterest.com',
+      'tumblr.com',
+    ],
+    keywords: [],
+  },
+  {
+    name: 'Notícias',
+    color: '#f59e0b',
+    domains: [
+      'bbc.com', 'bbc.co.uk', 'cnn.com', 'nytimes.com', 'theguardian.com',
+      'reuters.com', 'bloomberg.com', 'wsj.com', 'ft.com', 'economist.com',
+      'globo.com', 'g1.globo.com', 'folha.uol.com.br', 'uol.com.br',
+      'estadao.com.br', 'valor.globo.com', 'exame.com', 'hackernews.com',
+      'news.ycombinator.com',
+    ],
+    keywords: ['noticia', 'noticias', 'news'],
+  },
+  {
+    name: 'Entretenimento',
+    color: '#ef4444',
+    domains: [
+      'youtube.com', 'youtu.be', 'netflix.com', 'hulu.com', 'disneyplus.com',
+      'primevideo.com', 'hbomax.com', 'max.com', 'twitch.tv', 'spotify.com',
+      'soundcloud.com', 'vimeo.com', 'deezer.com', 'apple.com/music',
+      'tidal.com', 'imdb.com', 'letterboxd.com',
+    ],
+    keywords: [],
+  },
+  {
+    name: 'Compras',
+    color: '#10b981',
+    domains: [
+      'amazon.com', 'amazon.com.br', 'mercadolivre.com.br', 'mercadolivre.com',
+      'ebay.com', 'aliexpress.com', 'magazineluiza.com.br', 'americanas.com.br',
+      'shopee.com.br', 'shopify.com', 'etsy.com', 'shein.com',
+    ],
+    keywords: [],
+  },
+  {
+    name: 'Email e Comunicação',
+    color: '#06b6d4',
+    domains: [
+      'gmail.com', 'mail.google.com', 'outlook.com', 'outlook.live.com',
+      'office.com', 'slack.com', 'discord.com', 'teams.microsoft.com',
+      'whatsapp.com', 'web.whatsapp.com', 'telegram.org', 'web.telegram.org',
+      'zoom.us', 'meet.google.com', 'signal.org',
+    ],
+    keywords: [],
+  },
+  {
+    name: 'Trabalho e Produtividade',
+    color: '#f97316',
+    domains: [
+      'notion.so', 'trello.com', 'asana.com', 'monday.com', 'clickup.com',
+      'linear.app', 'jira.com', 'atlassian.net', 'atlassian.com', 'figma.com',
+      'miro.com', 'lucidchart.com', 'airtable.com', 'basecamp.com',
+      'todoist.com', 'evernote.com',
+    ],
+    keywords: [],
+  },
+  {
+    name: 'Documentos e Armazenamento',
+    color: '#14b8a6',
+    domains: [
+      'docs.google.com', 'drive.google.com', 'sheets.google.com',
+      'slides.google.com', 'dropbox.com', 'onedrive.live.com', 'box.com',
+      'icloud.com', 'mega.nz',
+    ],
+    keywords: [],
+  },
+  {
+    name: 'Finanças',
+    color: '#22c55e',
+    domains: [
+      'nubank.com.br', 'itau.com.br', 'bancodobrasil.com.br', 'bradesco.com.br',
+      'santander.com.br', 'binance.com', 'coinbase.com', 'stripe.com',
+      'paypal.com', 'wise.com', 'investing.com', 'tradingview.com',
+      'yahoo.com/finance', 'b3.com.br',
+    ],
+    keywords: ['banco', 'bank', 'invest'],
+  },
+  {
+    name: 'Viagens',
+    color: '#6366f1',
+    domains: [
+      'booking.com', 'airbnb.com', 'airbnb.com.br', 'expedia.com',
+      'kayak.com', 'decolar.com', 'latam.com', 'gol.com.br', 'azul.com.br',
+      'tripadvisor.com', 'skyscanner.com', 'maps.google.com', 'google.com/maps',
+    ],
+    keywords: ['travel', 'viagem', 'voos'],
+  },
+];
+
+const OTHER_COLOR = '#64748b';
+const RULE_BY_NAME = new Map(RULES.map(r => [r.name, r]));
+
+/* ================================================================
+ * Categorização
+ * ================================================================ */
+function normalizeHost(host) {
+  host = (host || '').toLowerCase();
+  if (host.startsWith('www.')) host = host.slice(4);
+  return host;
+}
+
+function hostMatches(host, pattern) {
+  pattern = pattern.toLowerCase();
+  if (pattern.includes('/')) pattern = pattern.split('/', 1)[0];
+  return host === pattern || host.endsWith('.' + pattern);
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function categorizeUrl(url, name = '') {
+  if (!url) return CATEGORY_OTHER;
+  let parsed;
+  try { parsed = new URL(url); } catch { return CATEGORY_OTHER; }
+  const host = normalizeHost(parsed.hostname);
+  const path = (parsed.pathname || '').toLowerCase();
+  const text = `${name} ${path}`.toLowerCase();
+  if (!host) return CATEGORY_OTHER;
+
+  for (const rule of RULES) {
+    for (const domain of rule.domains) {
+      if (domain.includes('/')) {
+        const [base, subPath] = domain.split('/', 2);
+        if (hostMatches(host, base) && path.includes('/' + subPath)) return rule.name;
+      } else if (hostMatches(host, domain)) {
+        return rule.name;
+      }
+    }
+  }
+  for (const rule of RULES) {
+    for (const kw of rule.keywords || []) {
+      const re = new RegExp(`\\b${escapeRegex(kw)}\\b`);
+      if (re.test(text)) return rule.name;
+    }
+  }
+  return CATEGORY_OTHER;
+}
+
+function categoryColor(name) {
+  const rule = RULE_BY_NAME.get(name);
+  if (rule) return rule.color;
+  if (name === CATEGORY_OTHER) return OTHER_COLOR;
+  // Cor estável derivada do nome para categorias custom
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 60%, 55%)`;
+}
+
+/* ================================================================
+ * Parsing do arquivo Bookmarks do Chrome
+ * ================================================================ */
+let bookmarkIdCounter = 0;
+
+function nextId() {
+  return `bm-${++bookmarkIdCounter}`;
+}
+
+function parseChromeBookmarks(raw) {
+  const roots = raw.roots || {};
+  const result = {
+    bookmarks: [],
+    rootNames: {
+      bookmark_bar: roots.bookmark_bar?.name || 'Barra de favoritos',
+      other: roots.other?.name || 'Outros favoritos',
+      synced: roots.synced?.name || 'Favoritos do celular',
+    },
+    version: raw.version || 1,
+  };
+
+  function walk(node) {
+    if (!node) return;
+    if (node.type === 'url') {
+      result.bookmarks.push({
+        id: nextId(),
+        name: node.name || '',
+        url: node.url || '',
+        dateAdded: node.date_added || '',
+        guid: node.guid || '',
+        originalId: node.id || '',
+        category: categorizeUrl(node.url || '', node.name || ''),
+      });
+    } else if (node.type === 'folder' && Array.isArray(node.children)) {
+      for (const child of node.children) walk(child);
+    }
+  }
+
+  for (const root of ['bookmark_bar', 'other', 'synced']) {
+    if (roots[root]) {
+      const r = roots[root];
+      if (Array.isArray(r.children)) {
+        for (const child of r.children) walk(child);
+      }
+    }
+  }
+
+  return result;
+}
+
+/* ================================================================
+ * Construção do arquivo de saída (compatível com Chrome)
+ * ================================================================ */
+function buildChromeBookmarks(state) {
+  const grouped = new Map();
+  for (const name of state.categoryOrder) {
+    grouped.set(name, []);
+  }
+  for (const bm of state.bookmarks) {
+    if (!grouped.has(bm.category)) grouped.set(bm.category, []);
+    grouped.get(bm.category).push(bm);
+  }
+
+  const folders = [];
+  for (const [name, list] of grouped) {
+    if (!list.length) continue;
+    const sorted = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    folders.push({
+      type: 'folder',
+      name,
+      children: sorted.map(bm => {
+        const node = { type: 'url', name: bm.name, url: bm.url };
+        if (bm.originalId) node.id = bm.originalId;
+        if (bm.dateAdded) node.date_added = bm.dateAdded;
+        if (bm.guid) node.guid = bm.guid;
+        return node;
+      }),
+    });
+  }
+
+  // "Outros" sempre por último
+  folders.sort((a, b) => {
+    const aOther = a.name === CATEGORY_OTHER ? 1 : 0;
+    const bOther = b.name === CATEGORY_OTHER ? 1 : 0;
+    if (aOther !== bOther) return aOther - bOther;
+    return b.children.length - a.children.length;
+  });
+
+  return {
+    checksum: '',
+    roots: {
+      bookmark_bar: { type: 'folder', name: state.rootNames.bookmark_bar, children: folders },
+      other: { type: 'folder', name: state.rootNames.other, children: [] },
+      synced: { type: 'folder', name: state.rootNames.synced, children: [] },
+    },
+    version: state.version,
+  };
+}
+
+/* ================================================================
+ * Estado da aplicação
+ * ================================================================ */
+const state = {
+  bookmarks: [],
+  categoryOrder: [],
+  rootNames: { bookmark_bar: 'Barra de favoritos', other: 'Outros favoritos', synced: 'Favoritos do celular' },
+  version: 1,
+  search: '',
+  history: [],
+  historyLimit: 30,
+  draggedId: null,
+};
+
+function snapshot() {
+  return JSON.parse(JSON.stringify({
+    bookmarks: state.bookmarks,
+    categoryOrder: state.categoryOrder,
+    rootNames: state.rootNames,
+    version: state.version,
+  }));
+}
+
+function pushHistory() {
+  state.history.push(snapshot());
+  if (state.history.length > state.historyLimit) state.history.shift();
+  updateUndoButton();
+}
+
+function undo() {
+  if (!state.history.length) return;
+  const snap = state.history.pop();
+  state.bookmarks = snap.bookmarks;
+  state.categoryOrder = snap.categoryOrder;
+  state.rootNames = snap.rootNames;
+  state.version = snap.version;
+  render();
+  toast('Ação desfeita', 'success');
+}
+
+function updateUndoButton() {
+  document.getElementById('btn-undo').disabled = !state.history.length;
+}
+
+function rebuildCategoryOrder() {
+  const seen = new Set(state.categoryOrder);
+  for (const bm of state.bookmarks) {
+    if (!seen.has(bm.category)) {
+      state.categoryOrder.push(bm.category);
+      seen.add(bm.category);
+    }
+  }
+}
+
+/* ================================================================
+ * Ações sobre o estado
+ * ================================================================ */
+function loadBookmarksFromJson(raw) {
+  const parsed = parseChromeBookmarks(raw);
+  state.bookmarks = parsed.bookmarks;
+  state.rootNames = parsed.rootNames;
+  state.version = parsed.version;
+  state.history = [];
+
+  // Ordem inicial: regras pré-definidas (na ordem das RULES), depois "Outros"
+  const orderHint = [...RULES.map(r => r.name), CATEGORY_OTHER];
+  const present = new Set(state.bookmarks.map(b => b.category));
+  state.categoryOrder = orderHint.filter(n => present.has(n));
+  // Categorias custom (caso já existam) vão para o fim
+  for (const bm of state.bookmarks) {
+    if (!state.categoryOrder.includes(bm.category)) state.categoryOrder.push(bm.category);
+  }
+
+  enableControls(true);
+  render();
+  toast(`Carregados ${state.bookmarks.length} bookmarks`, 'success');
+}
+
+function moveBookmark(bookmarkId, targetCategory) {
+  const bm = state.bookmarks.find(b => b.id === bookmarkId);
+  if (!bm || bm.category === targetCategory) return;
+  pushHistory();
+  bm.category = targetCategory;
+  if (!state.categoryOrder.includes(targetCategory)) {
+    state.categoryOrder.push(targetCategory);
+  }
+  render();
+}
+
+function deleteBookmark(bookmarkId) {
+  const idx = state.bookmarks.findIndex(b => b.id === bookmarkId);
+  if (idx === -1) return;
+  pushHistory();
+  state.bookmarks.splice(idx, 1);
+  render();
+}
+
+function recategorizeAll() {
+  pushHistory();
+  for (const bm of state.bookmarks) {
+    bm.category = categorizeUrl(bm.url, bm.name);
+  }
+  rebuildCategoryOrder();
+  render();
+  toast('Bookmarks recategorizados', 'success');
+}
+
+function removeDuplicates() {
+  const seen = new Set();
+  const toRemove = [];
+  for (const bm of state.bookmarks) {
+    const key = (bm.url || '').trim().toLowerCase();
+    if (!key) continue;
+    if (seen.has(key)) toRemove.push(bm.id);
+    else seen.add(key);
+  }
+  if (!toRemove.length) {
+    toast('Nenhum duplicado encontrado', 'warning');
+    return;
+  }
+  pushHistory();
+  const removeSet = new Set(toRemove);
+  state.bookmarks = state.bookmarks.filter(b => !removeSet.has(b.id));
+  render();
+  toast(`Removidos ${toRemove.length} duplicados`, 'success');
+}
+
+function addCategory(name) {
+  name = name.trim();
+  if (!name) return;
+  if (state.categoryOrder.includes(name)) {
+    toast('Categoria já existe', 'warning');
+    return;
+  }
+  pushHistory();
+  state.categoryOrder.push(name);
+  render();
+  toast(`Categoria "${name}" criada`, 'success');
+}
+
+function renameCategory(oldName, newName) {
+  newName = newName.trim();
+  if (!newName || newName === oldName) return;
+  if (state.categoryOrder.includes(newName)) {
+    toast(`Categoria "${newName}" já existe`, 'warning');
+    return;
+  }
+  pushHistory();
+  const idx = state.categoryOrder.indexOf(oldName);
+  if (idx !== -1) state.categoryOrder[idx] = newName;
+  for (const bm of state.bookmarks) {
+    if (bm.category === oldName) bm.category = newName;
+  }
+  render();
+  toast(`Renomeado para "${newName}"`, 'success');
+}
+
+function deleteCategory(name) {
+  if (name === CATEGORY_OTHER) {
+    toast('A categoria "Outros" não pode ser removida', 'warning');
+    return;
+  }
+  pushHistory();
+  state.categoryOrder = state.categoryOrder.filter(n => n !== name);
+  for (const bm of state.bookmarks) {
+    if (bm.category === name) bm.category = CATEGORY_OTHER;
+  }
+  if (!state.categoryOrder.includes(CATEGORY_OTHER)) {
+    state.categoryOrder.push(CATEGORY_OTHER);
+  }
+  render();
+  toast(`Categoria "${name}" removida; bookmarks movidos para "Outros"`, 'success');
+}
+
+/* ================================================================
+ * Estatísticas
+ * ================================================================ */
+function computeStats() {
+  const seen = new Set();
+  let duplicates = 0;
+  const domains = new Map();
+  for (const bm of state.bookmarks) {
+    const key = (bm.url || '').trim().toLowerCase();
+    if (key) {
+      if (seen.has(key)) duplicates++;
+      else seen.add(key);
+    }
+    try {
+      const host = normalizeHost(new URL(bm.url).hostname);
+      if (host) domains.set(host, (domains.get(host) || 0) + 1);
+    } catch { /* ignore */ }
+  }
+  const topDomains = [...domains.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+  return {
+    total: state.bookmarks.length,
+    categories: state.categoryOrder.filter(n => state.bookmarks.some(b => b.category === n)).length,
+    duplicates,
+    domains: domains.size,
+    topDomains,
+  };
+}
+
+function markDuplicates() {
+  const seen = new Set();
+  const duplicateIds = new Set();
+  for (const bm of state.bookmarks) {
+    const key = (bm.url || '').trim().toLowerCase();
+    if (!key) continue;
+    if (seen.has(key)) duplicateIds.add(bm.id);
+    else seen.add(key);
+  }
+  return duplicateIds;
+}
+
+/* ================================================================
+ * Renderização
+ * ================================================================ */
+function render() {
+  renderStats();
+  renderCategories();
+  rebuildCategoryOrder();
+}
+
+function renderStats() {
+  const stats = computeStats();
+  document.getElementById('stat-total').textContent = stats.total;
+  document.getElementById('stat-categories').textContent = stats.categories;
+  document.getElementById('stat-duplicates').textContent = stats.duplicates;
+  document.getElementById('stat-domains').textContent = stats.domains;
+
+  const list = document.getElementById('top-domains');
+  list.innerHTML = '';
+  if (!stats.topDomains.length) {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="domain-name" style="color:var(--text-dim)">nenhum</span>';
+    list.appendChild(li);
+  }
+  for (const [host, count] of stats.topDomains) {
+    const li = document.createElement('li');
+    const nameEl = document.createElement('span');
+    nameEl.className = 'domain-name';
+    nameEl.textContent = host;
+    nameEl.title = host;
+    const countEl = document.createElement('span');
+    countEl.className = 'domain-count';
+    countEl.textContent = count;
+    li.appendChild(nameEl);
+    li.appendChild(countEl);
+    list.appendChild(li);
+  }
+}
+
+function renderCategories() {
+  const container = document.getElementById('categories');
+  container.innerHTML = '';
+
+  const search = state.search.toLowerCase();
+  const duplicateIds = markDuplicates();
+
+  // Agrupa bookmarks por categoria
+  const byCategory = new Map();
+  for (const name of state.categoryOrder) byCategory.set(name, []);
+  for (const bm of state.bookmarks) {
+    if (search) {
+      const hay = `${bm.name} ${bm.url}`.toLowerCase();
+      if (!hay.includes(search)) continue;
+    }
+    if (!byCategory.has(bm.category)) byCategory.set(bm.category, []);
+    byCategory.get(bm.category).push(bm);
+  }
+
+  // Renderiza cada categoria que tem bookmarks visíveis OU existe na ordem
+  for (const [name, list] of byCategory) {
+    if (search && !list.length) continue;
+    container.appendChild(renderCategory(name, list, duplicateIds));
+  }
+}
+
+function renderCategory(name, bookmarks, duplicateIds) {
+  const tpl = document.createElement('div');
+  tpl.className = 'category';
+  tpl.style.setProperty('--cat-color', categoryColor(name));
+  tpl.dataset.category = name;
+
+  const header = document.createElement('div');
+  header.className = 'category-header';
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'category-name';
+  nameEl.textContent = name;
+  nameEl.title = 'Clique para renomear';
+  nameEl.addEventListener('click', () => startRename(nameEl, name));
+
+  const badge = document.createElement('div');
+  badge.className = 'category-badge';
+  badge.textContent = bookmarks.length;
+
+  const actions = document.createElement('div');
+  actions.className = 'category-actions';
+  const delBtn = document.createElement('button');
+  delBtn.textContent = '×';
+  delBtn.title = 'Remover categoria (move bookmarks para "Outros")';
+  delBtn.addEventListener('click', () => {
+    showConfirm(
+      'Remover categoria',
+      `Mover ${bookmarks.length} bookmark(s) de "${name}" para "${CATEGORY_OTHER}"?`,
+      () => deleteCategory(name)
+    );
+  });
+  actions.appendChild(delBtn);
+
+  header.appendChild(nameEl);
+  header.appendChild(badge);
+  header.appendChild(actions);
+  tpl.appendChild(header);
+
+  const listEl = document.createElement('div');
+  listEl.className = 'bookmarks-list';
+
+  // Ordem alfabética dentro da categoria
+  const sorted = [...bookmarks].sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+  );
+
+  for (const bm of sorted) {
+    listEl.appendChild(renderBookmark(bm, duplicateIds.has(bm.id)));
+  }
+
+  tpl.appendChild(listEl);
+  setupCategoryDragTarget(tpl);
+  return tpl;
+}
+
+function renderBookmark(bm, isDuplicate) {
+  const el = document.createElement('div');
+  el.className = 'bookmark' + (isDuplicate ? ' duplicate' : '');
+  el.draggable = true;
+  el.dataset.id = bm.id;
+  if (isDuplicate) el.title = 'URL duplicada';
+
+  const favicon = document.createElement('img');
+  favicon.className = 'bookmark-favicon';
+  favicon.alt = '';
+  favicon.loading = 'lazy';
+  try {
+    const host = new URL(bm.url).hostname;
+    favicon.src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`;
+  } catch {
+    favicon.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="%23475569"/></svg>';
+  }
+  favicon.addEventListener('error', () => {
+    favicon.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="%23475569"/></svg>';
+  });
+
+  const info = document.createElement('div');
+  info.className = 'bookmark-info';
+  const nameEl = document.createElement('div');
+  nameEl.className = 'bookmark-name';
+  nameEl.textContent = bm.name || '(sem título)';
+  const urlEl = document.createElement('div');
+  urlEl.className = 'bookmark-url';
+  urlEl.textContent = bm.url;
+  info.appendChild(nameEl);
+  info.appendChild(urlEl);
+
+  const actions = document.createElement('div');
+  actions.className = 'bookmark-actions';
+  const openBtn = document.createElement('button');
+  openBtn.textContent = '↗';
+  openBtn.title = 'Abrir em nova aba';
+  openBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    window.open(bm.url, '_blank', 'noopener,noreferrer');
+  });
+  const delBtn = document.createElement('button');
+  delBtn.textContent = '×';
+  delBtn.title = 'Remover bookmark';
+  delBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    deleteBookmark(bm.id);
+  });
+  actions.appendChild(openBtn);
+  actions.appendChild(delBtn);
+
+  el.appendChild(favicon);
+  el.appendChild(info);
+  el.appendChild(actions);
+
+  // Drag and drop
+  el.addEventListener('dragstart', e => {
+    state.draggedId = bm.id;
+    el.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', bm.id);
+  });
+  el.addEventListener('dragend', () => {
+    state.draggedId = null;
+    el.classList.remove('dragging');
+  });
+
+  return el;
+}
+
+function setupCategoryDragTarget(catEl) {
+  catEl.addEventListener('dragover', e => {
+    if (state.draggedId == null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    catEl.classList.add('drag-over');
+  });
+  catEl.addEventListener('dragleave', e => {
+    if (e.target === catEl || !catEl.contains(e.relatedTarget)) {
+      catEl.classList.remove('drag-over');
+    }
+  });
+  catEl.addEventListener('drop', e => {
+    e.preventDefault();
+    catEl.classList.remove('drag-over');
+    const id = e.dataTransfer.getData('text/plain') || state.draggedId;
+    if (id) moveBookmark(id, catEl.dataset.category);
+  });
+}
+
+/* ================================================================
+ * Renomeio inline de categoria
+ * ================================================================ */
+function startRename(el, currentName) {
+  el.contentEditable = 'true';
+  el.focus();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  function finish(commit) {
+    el.contentEditable = 'false';
+    el.removeEventListener('blur', onBlur);
+    el.removeEventListener('keydown', onKey);
+    if (commit) {
+      const newName = el.textContent.trim();
+      if (newName && newName !== currentName) renameCategory(currentName, newName);
+      else el.textContent = currentName;
+    } else {
+      el.textContent = currentName;
+    }
+  }
+  function onBlur() { finish(true); }
+  function onKey(e) {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  }
+  el.addEventListener('blur', onBlur);
+  el.addEventListener('keydown', onKey);
+}
+
+/* ================================================================
+ * Modal e toast
+ * ================================================================ */
+let modalCallback = null;
+
+function showPrompt(title, message, placeholder, callback) {
+  const backdrop = document.getElementById('modal-backdrop');
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-message').textContent = message;
+  document.getElementById('modal-input-row').classList.remove('hidden');
+  const input = document.getElementById('modal-input');
+  input.value = '';
+  input.placeholder = placeholder || '';
+  modalCallback = () => {
+    const value = input.value;
+    callback(value);
+  };
+  backdrop.classList.remove('hidden');
+  input.focus();
+}
+
+function showConfirm(title, message, callback) {
+  const backdrop = document.getElementById('modal-backdrop');
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-message').textContent = message;
+  document.getElementById('modal-input-row').classList.add('hidden');
+  modalCallback = callback;
+  backdrop.classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.add('hidden');
+  modalCallback = null;
+}
+
+function toast(message, type = '') {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'opacity 0.25s';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 250);
+  }, 2500);
+}
+
+/* ================================================================
+ * Controles e ações de UI
+ * ================================================================ */
+function enableControls(enabled) {
+  for (const id of ['search', 'btn-recategorize', 'btn-dedupe', 'btn-add-category',
+                    'btn-reload', 'btn-export']) {
+    document.getElementById(id).disabled = !enabled;
+  }
+  document.getElementById('empty-state').classList.toggle('hidden', enabled);
+  document.getElementById('app').classList.toggle('hidden', !enabled);
+}
+
+function exportBookmarks() {
+  const data = buildChromeBookmarks(state);
+  const json = JSON.stringify(data, null, 3);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Bookmarks';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+  toast('Arquivo exportado', 'success');
+}
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const raw = JSON.parse(e.target.result);
+      if (!raw.roots) throw new Error('Arquivo inválido: campo "roots" ausente');
+      loadBookmarksFromJson(raw);
+    } catch (err) {
+      toast(`Erro ao ler arquivo: ${err.message}`, 'danger');
+    }
+  };
+  reader.onerror = () => toast('Erro ao ler arquivo', 'danger');
+  reader.readAsText(file);
+}
+
+function reload() {
+  showConfirm('Carregar outro arquivo',
+    'Suas alterações não exportadas serão perdidas. Continuar?',
+    () => {
+      state.bookmarks = [];
+      state.categoryOrder = [];
+      state.history = [];
+      enableControls(false);
+      document.getElementById('file-input').value = '';
+    }
+  );
+}
+
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'light' ? 'dark' : 'light';
+  if (next === 'dark') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', 'light');
+  document.getElementById('btn-theme').textContent = next === 'light' ? '☀' : '☾';
+  try { localStorage.setItem('theme', next); } catch { /* ignore */ }
+}
+
+/* ================================================================
+ * Inicialização
+ * ================================================================ */
+function init() {
+  // Tema inicial
+  let saved = null;
+  try { saved = localStorage.getItem('theme'); } catch { /* ignore */ }
+  if (saved === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    document.getElementById('btn-theme').textContent = '☀';
+  }
+
+  // File input
+  const fileInput = document.getElementById('file-input');
+  const dropZone = document.getElementById('drop-zone');
+  fileInput.addEventListener('change', e => {
+    if (e.target.files[0]) readFile(e.target.files[0]);
+  });
+
+  // Drop zone
+  ['dragenter', 'dragover'].forEach(evt => {
+    dropZone.addEventListener(evt, e => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+  });
+  ['dragleave', 'drop'].forEach(evt => {
+    dropZone.addEventListener(evt, e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+    });
+  });
+  dropZone.addEventListener('drop', e => {
+    if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
+  });
+
+  // Prevenir drop em outras áreas do documento
+  ['dragover', 'drop'].forEach(evt => {
+    document.addEventListener(evt, e => {
+      if (e.target === dropZone || dropZone.contains(e.target)) return;
+      if (e.target.closest('.category')) return;
+      e.preventDefault();
+    });
+  });
+
+  // Toolbar
+  document.getElementById('btn-recategorize').addEventListener('click', () => {
+    showConfirm('Recategorizar', 'Aplicar regras de categorização a TODOS os bookmarks? Movimentos manuais serão sobrescritos.',
+      recategorizeAll);
+  });
+  document.getElementById('btn-dedupe').addEventListener('click', removeDuplicates);
+  document.getElementById('btn-add-category').addEventListener('click', () => {
+    showPrompt('Nova categoria', 'Digite o nome da nova categoria:', 'Ex: Estudo',
+      name => addCategory(name));
+  });
+  document.getElementById('btn-undo').addEventListener('click', undo);
+  document.getElementById('btn-theme').addEventListener('click', toggleTheme);
+  document.getElementById('btn-reload').addEventListener('click', reload);
+  document.getElementById('btn-export').addEventListener('click', exportBookmarks);
+
+  // Search
+  const searchInput = document.getElementById('search');
+  let searchTimer;
+  searchInput.addEventListener('input', e => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.search = e.target.value;
+      renderCategories();
+    }, 100);
+  });
+
+  // Modal
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('modal-confirm').addEventListener('click', () => {
+    const cb = modalCallback;
+    closeModal();
+    if (cb) cb(document.getElementById('modal-input').value);
+  });
+  document.getElementById('modal-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('modal-confirm').click();
+    if (e.key === 'Escape') closeModal();
+  });
+  document.getElementById('modal-backdrop').addEventListener('click', e => {
+    if (e.target.id === 'modal-backdrop') closeModal();
+  });
+
+  // Atalhos de teclado
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'z' && !state.history.length === false) {
+        e.preventDefault();
+        undo();
+      }
+      if (e.key === 'f') {
+        if (!searchInput.disabled) {
+          e.preventDefault();
+          searchInput.focus();
+        }
+      }
+    }
+    if (e.key === 'Escape' && document.activeElement === searchInput) {
+      searchInput.value = '';
+      state.search = '';
+      renderCategories();
+    }
+  });
+}
+
+init();
+</script>
+</body>
+</html>
