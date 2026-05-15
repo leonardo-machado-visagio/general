@@ -8,6 +8,7 @@ e gera análise da distribuição da próxima palavra.
 import asyncio
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -37,12 +38,13 @@ QUESTIONS = {
 
 N_PER_QUESTION = 1000
 CONCURRENCY = 50
-MAX_RETRIES = 3
+MAX_RETRIES = 5
 MAX_TOKENS = 5
 TEMPERATURE = 1.0
 
-PRIMARY_MODEL = "claude-opus-4-7"
-FALLBACK_MODEL = "claude-opus-4-6"
+PRIMARY_MODEL = "claude-haiku-4-5-20251001"
+FALLBACK_MODEL = "claude-haiku-4-5-20251001"
+MODEL_DISPLAY_NAME = "Claude Haiku 4.5"
 
 WORD_REGEX = re.compile(r"[a-zA-ZáéíóúâêôãõàçüÁÉÍÓÚÂÊÔÃÕÀÇÜ]+")
 
@@ -63,21 +65,29 @@ def get_api_key():
 
 async def detect_model(client):
     for model in (PRIMARY_MODEL, FALLBACK_MODEL):
-        try:
-            await client.messages.create(
-                model=model,
-                max_tokens=1,
-                messages=[{"role": "user", "content": "oi"}],
-            )
-            print(f"Modelo selecionado: {model}")
-            return model
-        except APIStatusError as e:
-            msg = str(e).lower()
-            if "not_found" in msg or "model_not_found" in msg or getattr(e, "status_code", None) == 404:
-                print(f"Modelo {model} indisponível, tentando fallback...")
-                continue
-            raise
-    sys.stderr.write("ERRO: nem o modelo primário nem o fallback estão disponíveis.\n")
+        for attempt in range(6):
+            try:
+                await client.messages.create(
+                    model=model,
+                    max_tokens=1,
+                    messages=[{"role": "user", "content": "oi"}],
+                )
+                print(f"Modelo selecionado: {model}")
+                return model
+            except APIStatusError as e:
+                status = getattr(e, "status_code", None)
+                msg = str(e).lower()
+                if status == 404 or "not_found" in msg or "model_not_found" in msg:
+                    print(f"Modelo {model} indisponível ({status}), tentando fallback...")
+                    break
+                if attempt < 5:
+                    backoff = min(2 ** attempt, 30)
+                    print(f"  transient {status} no probe; retry em {backoff}s...")
+                    await asyncio.sleep(backoff)
+                    continue
+                print(f"  desistindo do probe ({status}) após {attempt + 1} tentativas")
+                break
+    sys.stderr.write("ERRO: nem o modelo primário nem o fallback responderam ao probe.\n")
     sys.exit(1)
 
 
@@ -103,6 +113,10 @@ class Progress:
                 )
 
 
+def _backoff(attempt):
+    return min(2 ** attempt, 30) + random.uniform(0, 1)
+
+
 async def call_one(client, model, prefill, semaphore, progress):
     async with semaphore:
         last_error = None
@@ -123,20 +137,20 @@ async def call_one(client, model, prefill, semaphore, progress):
             except RateLimitError as e:
                 last_error = e
                 if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(_backoff(attempt))
                     continue
                 break
             except APIStatusError as e:
                 last_error = e
                 status = getattr(e, "status_code", None)
                 if status and (status == 429 or status >= 500) and attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(_backoff(attempt))
                     continue
                 break
             except Exception as e:
                 last_error = e
                 if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(_backoff(attempt))
                     continue
                 break
         await progress.tick()
@@ -202,7 +216,7 @@ def write_excel(distributions, path):
     # Frase usada
     resumo.append([])
     resumo.append(["Frases (prefill):"])
-    resumo[len(list(resumo.rows))].font = Font(bold=True)
+    resumo.cell(row=resumo.max_row, column=1).font = Font(bold=True)
     for q_key, prefill in QUESTIONS.items():
         resumo.append([q_key, prefill])
 
@@ -245,7 +259,7 @@ def build_html(distributions):
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Distribuição de respostas do Claude Opus</title>
+<title>Distribuição de respostas do Claude Haiku 4.5</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -311,7 +325,7 @@ def build_html(distributions):
 </style>
 </head>
 <body>
-<h1>Distribuição de respostas do Claude Opus — efeito do contexto</h1>
+<h1>Distribuição de respostas do Claude Haiku 4.5 — efeito do contexto</h1>
 <p class="subtitle">
   1000 chamadas por prompt · temperatura 1.0 · prefill como mensagem do assistant ·
   primeira palavra extraída de cada resposta · top 10 mostrado.
@@ -410,7 +424,7 @@ function makeChart(canvasId, key) {
 
 async def main():
     print("=" * 70)
-    print("Simulação de autocomplete — Claude Opus")
+    print(f"Simulação de autocomplete — {MODEL_DISPLAY_NAME}")
     print("=" * 70)
     api_key = get_api_key()
     client = AsyncAnthropic(api_key=api_key)
@@ -420,7 +434,7 @@ async def main():
     total = len(QUESTIONS) * N_PER_QUESTION
     print(f"\nTotal de chamadas: {total} ({N_PER_QUESTION} x {len(QUESTIONS)} perguntas)")
     print(f"Paralelismo: {CONCURRENCY} | Temperatura: {TEMPERATURE} | max_tokens: {MAX_TOKENS}")
-    print(f"Custo estimado: ~US$ 3-5 (Opus)\n")
+    print(f"Custo estimado: ~US$ 0.20 (Haiku 4.5)\n")
 
     semaphore = asyncio.Semaphore(CONCURRENCY)
     progress = Progress(total)
