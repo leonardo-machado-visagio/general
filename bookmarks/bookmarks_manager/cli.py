@@ -10,9 +10,12 @@ from pathlib import Path
 from bookmarks_manager.analyzer import analyze
 from bookmarks_manager.reader import default_chrome_path, read_bookmarks
 from bookmarks_manager.reorganizer import (
+    ai_suggest_reorganization,
     build_reorganized_tree,
+    build_tree_from_suggestion,
     suggest_reorganization,
 )
+from bookmarks_manager.taxonomy import load_taxonomy, save_taxonomy
 
 
 def _add_common_args(parser: argparse.ArgumentParser) -> None:
@@ -43,9 +46,45 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_propose_tree(args: argparse.Namespace) -> int:
+    from bookmarks_manager.ai_taxonomy import propose_taxonomy
+
+    out_path: Path = args.output
+    if out_path.exists() and not args.refresh:
+        print(
+            f"Já existe taxonomia em {out_path}. Use --refresh para sobrescrever.",
+            file=sys.stderr,
+        )
+        return 2
+
+    file = read_bookmarks(args.path, profile=args.profile)
+    bookmarks = list(file.iter_bookmarks())
+    if not bookmarks:
+        print("Nenhum bookmark encontrado.", file=sys.stderr)
+        return 1
+
+    print(f"Propondo taxonomia a partir de {len(bookmarks)} bookmarks...")
+    taxonomy = propose_taxonomy(bookmarks, sample_size=args.sample_size)
+    save_taxonomy(taxonomy, out_path)
+    print(f"Taxonomia salva em: {out_path}")
+    print()
+    print(taxonomy.format_report())
+    return 0
+
+
 def cmd_suggest(args: argparse.Namespace) -> int:
     file = read_bookmarks(args.path, profile=args.profile)
-    suggestion = suggest_reorganization(file, remove_duplicates=not args.keep_duplicates)
+
+    if args.ai:
+        taxonomy = _load_or_fail(args.taxonomy)
+        suggestion = ai_suggest_reorganization(
+            file, taxonomy, remove_duplicates=not args.keep_duplicates
+        )
+    else:
+        suggestion = suggest_reorganization(
+            file, remove_duplicates=not args.keep_duplicates
+        )
+
     if args.detailed:
         print(suggestion.format_detailed_report(limit_per_category=args.sample))
     else:
@@ -55,11 +94,6 @@ def cmd_suggest(args: argparse.Namespace) -> int:
 
 def cmd_reorganize(args: argparse.Namespace) -> int:
     file = read_bookmarks(args.path, profile=args.profile)
-    new_file = build_reorganized_tree(
-        file,
-        remove_duplicates=not args.keep_duplicates,
-        target_root=args.target_root,
-    )
 
     out_path: Path = args.output
     if out_path.exists() and not args.force:
@@ -68,6 +102,21 @@ def cmd_reorganize(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+
+    if args.ai:
+        taxonomy = _load_or_fail(args.taxonomy)
+        suggestion = ai_suggest_reorganization(
+            file, taxonomy, remove_duplicates=not args.keep_duplicates
+        )
+        new_file = build_tree_from_suggestion(
+            suggestion, file, target_root=args.target_root
+        )
+    else:
+        new_file = build_reorganized_tree(
+            file,
+            remove_duplicates=not args.keep_duplicates,
+            target_root=args.target_root,
+        )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8") as fh:
@@ -80,6 +129,15 @@ def cmd_reorganize(args: argparse.Namespace) -> int:
         "e copie o novo arquivo para o lugar do original."
     )
     return 0
+
+
+def _load_or_fail(path: Path | None):
+    if path is None:
+        raise ValueError(
+            "--ai requer --taxonomy <arquivo>. "
+            "Rode `propose-tree -o taxonomy.json` antes."
+        )
+    return load_taxonomy(path)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -107,6 +165,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_analyze.set_defaults(func=cmd_analyze)
 
+    p_propose = sub.add_parser(
+        "propose-tree",
+        help="Gera taxonomia (2 níveis) via IA a partir dos seus bookmarks",
+    )
+    _add_common_args(p_propose)
+    p_propose.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        required=True,
+        help="Onde salvar o JSON da taxonomia",
+    )
+    p_propose.add_argument(
+        "--sample-size",
+        type=int,
+        default=500,
+        help="Tamanho máximo da amostra enviada à IA (padrão: 500)",
+    )
+    p_propose.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Sobrescrever taxonomia existente",
+    )
+    p_propose.set_defaults(func=cmd_propose_tree)
+
     p_suggest = sub.add_parser("suggest", help="Sugere reorganização por categorias")
     _add_common_args(p_suggest)
     p_suggest.add_argument(
@@ -124,6 +207,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-duplicates",
         action="store_true",
         help="Não remover URLs duplicadas",
+    )
+    p_suggest.add_argument(
+        "--ai",
+        action="store_true",
+        help="Categorizar via IA usando a taxonomia indicada por --taxonomy",
+    )
+    p_suggest.add_argument(
+        "--taxonomy",
+        type=Path,
+        default=None,
+        help="Caminho do arquivo de taxonomia (obrigatório com --ai)",
     )
     p_suggest.set_defaults(func=cmd_suggest)
 
@@ -154,6 +248,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Sobrescrever o arquivo de saída se já existir",
+    )
+    p_reorg.add_argument(
+        "--ai",
+        action="store_true",
+        help="Categorizar via IA (árvore de 2 níveis) usando --taxonomy",
+    )
+    p_reorg.add_argument(
+        "--taxonomy",
+        type=Path,
+        default=None,
+        help="Caminho do arquivo de taxonomia (obrigatório com --ai)",
     )
     p_reorg.set_defaults(func=cmd_reorganize)
 

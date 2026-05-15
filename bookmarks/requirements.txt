@@ -1,0 +1,6 @@
+# Núcleo do projeto: stdlib apenas.
+#
+# IA (opcional): necessária só para os comandos `propose-tree`,
+# `suggest --ai` e `reorganize --ai`. Sem isso, o categorizador
+# heurístico continua funcionando normalmente.
+anthropic>=0.40.0
