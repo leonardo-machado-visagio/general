@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Distribuição de respostas do Claude Haiku 4.5</title>
+<title>Distribuição de respostas — autocomplete LLM</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -53,11 +53,16 @@
     align-items: center;
   }
   .prompt .ellipsis { color: #6366f1; font-weight: 700; }
-  .chart-container .meta {
+  .meta {
     font-size: 12px;
     color: #9ca3af;
     margin-bottom: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
   }
+  .meta .stat { white-space: nowrap; }
+  .meta .stat strong { color: #4f46e5; font-weight: 600; }
   .chart-wrapper { height: 380px; position: relative; }
   footer {
     margin-top: 32px;
@@ -72,53 +77,57 @@
 </style>
 </head>
 <body>
-<h1>Distribuição de respostas do Claude Haiku 4.5 — efeito do contexto</h1>
-<p class="subtitle">
-  10000 chamadas por prompt · temperatura 1.0 · prefill como mensagem do assistant ·
-  primeira palavra extraída de cada resposta · top 10 mostrado.
-</p>
-<div class="charts">
-  <div class="chart-container">
-    <h2>Q1 — Pouco contexto</h2>
-    <div class="prompt" id="prompt1"></div>
-    <div class="meta" id="meta1"></div>
-    <div class="chart-wrapper"><canvas id="chart1"></canvas></div>
-  </div>
-  <div class="chart-container">
-    <h2>Q2 — Contexto médio</h2>
-    <div class="prompt" id="prompt2"></div>
-    <div class="meta" id="meta2"></div>
-    <div class="chart-wrapper"><canvas id="chart2"></canvas></div>
-  </div>
-  <div class="chart-container">
-    <h2>Q3 — Muito contexto</h2>
-    <div class="prompt" id="prompt3"></div>
-    <div class="meta" id="meta3"></div>
-    <div class="chart-wrapper"><canvas id="chart3"></canvas></div>
-  </div>
-</div>
+<h1 id="page-title"></h1>
+<p class="subtitle" id="page-subtitle"></p>
+<div class="charts" id="charts"></div>
 <footer>
-  Gerado por <code>autocomplete_simulation.py</code>. Aula de LLMs para advogados.
+  Gerado por <code>autocomplete_simulation.py</code>.
 </footer>
 <script>
-const DATA = {"Q1_pouco_contexto": {"prompt": "A ação foi", "labels": ["interrompida", "bem", "suspensa", "iniciada", "muito", "concluída", "realizada", "tão", "rápida", "continuada"], "counts": [1587, 1321, 1116, 1073, 469, 426, 390, 359, 319, 267], "percentages": [15.89, 13.23, 11.18, 10.75, 4.7, 4.27, 3.91, 3.6, 3.19, 2.67], "total_valid": 9986, "errors": 9}, "Q2_contexto_medio": {"prompt": "A ação de despejo foi", "labels": ["realizada", "marcada", "suspensa", "executada", "adiada", "iniciada", "cancelada", "ordenada", "uma", "tão"], "counts": [1721, 1299, 908, 798, 715, 517, 508, 402, 288, 260], "percentages": [17.24, 13.01, 9.1, 7.99, 7.16, 5.18, 5.09, 4.03, 2.88, 2.6], "total_valid": 9983, "errors": 5}, "Q3_muito_contexto": {"prompt": "Após o inquilino purgar a mora dentro do prazo legal, a ação de despejo foi", "labels": ["arquivada", "automaticamente", "extinta", "arquiv", "imediatamente", "cancelada", "suspensa", "cassada", "descontinu", "julgada"], "counts": [3925, 2500, 1488, 959, 268, 238, 33, 25, 24, 20], "percentages": [41.01, 26.12, 15.55, 10.02, 2.8, 2.49, 0.34, 0.26, 0.25, 0.21], "total_valid": 9572, "errors": 14}};
+const PAYLOAD = {"questions": {"Q1_pouco_contexto": {"label": "Q1 — Pouco contexto", "prompt": "A ação foi", "labels": ["interrompida", "bem", "suspensa", "iniciada", "muito", "concluída", "realizada", "tão", "rápida", "bloqueada"], "counts": [2283, 1999, 1684, 1630, 696, 676, 548, 526, 460, 358], "percentages": [15.23, 13.34, 11.23, 10.87, 4.64, 4.51, 3.66, 3.51, 3.07, 2.39], "total_valid": 14989, "errors": 9, "unique_words": 277, "entropy_bits": 4.77, "tail_mass_pct": 27.5}, "Q2_contexto_medio": {"label": "Q2 — Contexto medio", "prompt": "A ação de despejo foi", "labels": ["realizada", "marcada", "suspensa", "executada", "adiada", "cancelada", "iniciada", "ordenada", "uma", "tão"], "counts": [2411, 1992, 1375, 1161, 1084, 882, 750, 532, 407, 400], "percentages": [16.11, 13.31, 9.19, 7.76, 7.24, 5.89, 5.01, 3.56, 2.72, 2.67], "total_valid": 14963, "errors": 9, "unique_words": 183, "entropy_bits": 4.56, "tail_mass_pct": 26.5}, "Q3_muito_contexto": {"label": "Q3 — Muito contexto", "prompt": "Após o inquilino purgar a mora dentro do prazo legal, a ação de despejo foi", "labels": ["arquivada", "automaticamente", "extinta", "imediatamente", "cancelada", "suspensa", "julgada", "descontinuada", "considerada", "rejeitada"], "counts": [7086, 3842, 2334, 469, 329, 53, 53, 51, 42, 36], "percentages": [49.22, 26.68, 16.21, 3.26, 2.29, 0.37, 0.37, 0.35, 0.29, 0.25], "total_valid": 14398, "errors": 18, "unique_words": 38, "entropy_bits": 1.94, "tail_mass_pct": 0.7}}, "order": ["Q1_pouco_contexto", "Q2_contexto_medio", "Q3_muito_contexto"], "model_display": "Claude Haiku 4.5", "n_per_question": 15000, "temperature": 1.0};
 
-function setPrompt(id, text) {
-  const el = document.getElementById(id);
-  el.innerHTML = '"' + text + '<span class="ellipsis">…</span>"';
+document.getElementById("page-title").textContent =
+  "Distribuição de respostas do " + PAYLOAD.model_display + " — efeito do contexto";
+document.getElementById("page-subtitle").textContent =
+  PAYLOAD.n_per_question + " chamadas por prompt · temperatura " + PAYLOAD.temperature +
+  " · prefill como mensagem do assistant · primeira palavra extraída · top 10 mostrado.";
+
+function statSpan(label, value) {
+  return '<span class="stat"><strong>' + value + '</strong> ' + label + '</span>';
 }
 
-function setMeta(id, info) {
-  const el = document.getElementById(id);
-  let msg = info.total_valid + ' respostas válidas';
-  if (info.errors > 0) msg += ' · ' + info.errors + ' erros';
-  el.textContent = msg;
-}
+function renderQuestion(container, key) {
+  const d = PAYLOAD.questions[key];
 
-function makeChart(canvasId, key) {
-  const d = DATA[key];
-  const ctx = document.getElementById(canvasId);
-  new Chart(ctx, {
+  const h2 = document.createElement("h2");
+  h2.textContent = d.label;
+
+  const prompt = document.createElement("div");
+  prompt.className = "prompt";
+  prompt.innerHTML = '"' + d.prompt + '<span class="ellipsis">…</span>"';
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  let metaHtml = statSpan("respostas", d.total_valid)
+    + statSpan("únicas", d.unique_words)
+    + statSpan("bits de entropia", d.entropy_bits)
+    + statSpan("% fora do top 10", d.tail_mass_pct);
+  if (d.errors > 0) {
+    metaHtml += statSpan("erros", d.errors);
+  }
+  meta.innerHTML = metaHtml;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "chart-wrapper";
+  const canvas = document.createElement("canvas");
+  wrapper.appendChild(canvas);
+
+  container.appendChild(h2);
+  container.appendChild(prompt);
+  container.appendChild(meta);
+  container.appendChild(wrapper);
+
+  new Chart(canvas, {
     type: 'bar',
     data: {
       labels: d.labels,
@@ -157,11 +166,12 @@ function makeChart(canvasId, key) {
   });
 }
 
-['Q1_pouco_contexto', 'Q2_contexto_medio', 'Q3_muito_contexto'].forEach((key, i) => {
-  const n = i + 1;
-  setPrompt('prompt' + n, DATA[key].prompt);
-  setMeta('meta' + n, DATA[key]);
-  makeChart('chart' + n, key);
+const chartsEl = document.getElementById("charts");
+PAYLOAD.order.forEach(key => {
+  const c = document.createElement("div");
+  c.className = "chart-container";
+  chartsEl.appendChild(c);
+  renderQuestion(c, key);
 });
 </script>
 </body>
