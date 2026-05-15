@@ -13,6 +13,9 @@ import re
 import sys
 import time
 from collections import Counter
+from pathlib import Path
+
+OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 try:
     from anthropic import AsyncAnthropic, APIStatusError, RateLimitError
@@ -457,20 +460,24 @@ async def main():
     elapsed = time.time() - t0
     print(f"\nConcluído em {elapsed:.1f}s\n")
 
-    # Salvar bruto
-    with open("raw_results.json", "w", encoding="utf-8") as f:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    raw_path = OUTPUT_DIR / "raw_results.json"
+    xlsx_path = OUTPUT_DIR / "distribuicao.xlsx"
+    html_path = OUTPUT_DIR / "distribuicao.html"
+
+    with open(raw_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print("Salvo: raw_results.json")
+    print(f"Salvo: {raw_path}")
 
     distributions = build_distributions(results)
 
-    write_excel(distributions, "distribuicao.xlsx")
-    print("Salvo: distribuicao.xlsx")
+    write_excel(distributions, xlsx_path)
+    print(f"Salvo: {xlsx_path}")
 
     html = build_html(distributions)
-    with open("distribuicao.html", "w", encoding="utf-8") as f:
+    with open(html_path, "w", encoding="utf-8") as f:
         f.write(html)
-    print("Salvo: distribuicao.html")
+    print(f"Salvo: {html_path}")
 
     print("\n" + "=" * 70)
     print("TOP 5 por pergunta")
