@@ -36,7 +36,7 @@ QUESTIONS = {
     "Q3_muito_contexto": "Após o inquilino purgar a mora dentro do prazo legal, a ação de despejo foi",
 }
 
-N_PER_QUESTION = 1000
+N_PER_QUESTION = 10000
 CONCURRENCY = 50
 MAX_RETRIES = 5
 MAX_TOKENS = 5
@@ -271,12 +271,13 @@ def build_html(distributions):
     background: #fafafa;
     color: #1f2937;
   }
-  h1 { color: #111827; margin-bottom: 4px; font-size: 24px; }
+  h1 { color: #111827; margin-bottom: 4px; font-size: 26px; }
   .subtitle { color: #6b7280; margin-bottom: 28px; font-size: 14px; }
   .charts {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
+    align-items: stretch;
   }
   .chart-container {
     background: white;
@@ -287,31 +288,34 @@ def build_html(distributions):
     flex-direction: column;
   }
   .chart-container h2 {
-    font-size: 13px;
-    color: #4f46e5;
-    margin: 0 0 4px 0;
+    font-size: 12px;
+    color: #6b7280;
+    margin: 0 0 10px 0;
     font-weight: 600;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
     text-transform: uppercase;
   }
+  .prompt {
+    color: #111827;
+    margin: 0 0 14px 0;
+    padding: 16px 18px;
+    background: #eef2ff;
+    border-left: 5px solid #4f46e5;
+    border-radius: 6px;
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1.35;
+    min-height: 130px;
+    display: flex;
+    align-items: center;
+  }
+  .prompt .ellipsis { color: #6366f1; font-weight: 700; }
   .chart-container .meta {
     font-size: 12px;
     color: #9ca3af;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   .chart-wrapper { height: 380px; position: relative; }
-  .prompt {
-    font-style: italic;
-    color: #374151;
-    margin-top: 14px;
-    padding: 10px 12px;
-    background: #f3f4f6;
-    border-left: 3px solid #4f46e5;
-    border-radius: 4px;
-    font-size: 13px;
-    line-height: 1.4;
-  }
-  .prompt .ellipsis { color: #9ca3af; }
   footer {
     margin-top: 32px;
     padding-top: 16px;
@@ -327,27 +331,27 @@ def build_html(distributions):
 <body>
 <h1>Distribuição de respostas do Claude Haiku 4.5 — efeito do contexto</h1>
 <p class="subtitle">
-  1000 chamadas por prompt · temperatura 1.0 · prefill como mensagem do assistant ·
+  10000 chamadas por prompt · temperatura 1.0 · prefill como mensagem do assistant ·
   primeira palavra extraída de cada resposta · top 10 mostrado.
 </p>
 <div class="charts">
   <div class="chart-container">
     <h2>Q1 — Pouco contexto</h2>
+    <div class="prompt" id="prompt1"></div>
     <div class="meta" id="meta1"></div>
     <div class="chart-wrapper"><canvas id="chart1"></canvas></div>
-    <div class="prompt" id="prompt1"></div>
   </div>
   <div class="chart-container">
     <h2>Q2 — Contexto médio</h2>
+    <div class="prompt" id="prompt2"></div>
     <div class="meta" id="meta2"></div>
     <div class="chart-wrapper"><canvas id="chart2"></canvas></div>
-    <div class="prompt" id="prompt2"></div>
   </div>
   <div class="chart-container">
     <h2>Q3 — Muito contexto</h2>
+    <div class="prompt" id="prompt3"></div>
     <div class="meta" id="meta3"></div>
     <div class="chart-wrapper"><canvas id="chart3"></canvas></div>
-    <div class="prompt" id="prompt3"></div>
   </div>
 </div>
 <footer>
@@ -434,7 +438,7 @@ async def main():
     total = len(QUESTIONS) * N_PER_QUESTION
     print(f"\nTotal de chamadas: {total} ({N_PER_QUESTION} x {len(QUESTIONS)} perguntas)")
     print(f"Paralelismo: {CONCURRENCY} | Temperatura: {TEMPERATURE} | max_tokens: {MAX_TOKENS}")
-    print(f"Custo estimado: ~US$ 0.20 (Haiku 4.5)\n")
+    print(f"Custo estimado: ~US$ 1-2 (Haiku 4.5)\n")
 
     semaphore = asyncio.Semaphore(CONCURRENCY)
     progress = Progress(total)
