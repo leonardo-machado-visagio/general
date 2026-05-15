@@ -33,7 +33,7 @@ Para outros perfis, troque `Default` por `Profile 1`, `Profile 2`, etc.
 
 ## Uso (CLI)
 
-Execute como módulo:
+Rode a partir desta pasta (`bookmarks/`):
 
 ```bash
 python -m bookmarks_manager <comando> [opções]
@@ -143,6 +143,8 @@ tests/
 ```
 
 ## Rodando os testes
+
+A partir desta pasta (`bookmarks/`):
 
 ```bash
 python -m pytest tests/
