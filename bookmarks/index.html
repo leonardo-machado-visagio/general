@@ -587,6 +587,62 @@
 
   /* === Util === */
   .hidden { display: none !important; }
+
+  /* === AI panel === */
+  .ai-panel {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ai-panel h3 { margin: 0; font-size: 14px; }
+  .ai-panel .ai-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .ai-panel .ai-status {
+    font-size: 12px;
+    color: var(--text-muted);
+    flex: 1;
+    min-width: 0;
+  }
+  .ai-panel .ai-status.ok { color: var(--success); }
+  .ai-panel .ai-status.warn { color: var(--warning); }
+  .ai-panel input[type="password"],
+  .ai-panel textarea {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    width: 100%;
+  }
+  .ai-panel textarea {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    min-height: 220px;
+    resize: vertical;
+  }
+  .ai-progress {
+    height: 6px;
+    background: var(--surface-3);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .ai-progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.2s;
+  }
 </style>
 </head>
 <body>
@@ -596,6 +652,7 @@
   <div class="actions">
     <input type="search" id="search" placeholder="Buscar bookmarks..." disabled>
     <button id="btn-recategorize" disabled title="Recategorizar todos os bookmarks usando as regras">Recategorizar</button>
+    <button id="btn-ai" disabled title="Categorização via Claude (Anthropic)">✨ IA</button>
     <button id="btn-dedupe" disabled title="Remover bookmarks com URL duplicada">Remover duplicados</button>
     <button id="btn-add-category" disabled title="Adicionar uma nova categoria">+ Categoria</button>
     <button id="btn-undo" disabled title="Desfazer última ação (Ctrl+Z)">↶ Desfazer</button>
@@ -659,6 +716,74 @@
     <div class="buttons">
       <button id="modal-cancel">Cancelar</button>
       <button id="modal-confirm" class="primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="ai-modal-backdrop">
+  <div class="modal" style="max-width:640px">
+    <h2>Categorização com IA</h2>
+    <p style="color:var(--text-muted);font-size:13px">
+      A Claude propõe uma árvore de categorias adaptada aos seus bookmarks
+      (Opus 4.7, 1 chamada) e depois classifica cada item nela (Haiku 4.5,
+      vários batches paralelos). Só o <strong>nome do bookmark e o domínio</strong>
+      são enviados — sem URL completa, path ou query.
+    </p>
+
+    <div class="ai-panel">
+      <h3>1. Chave da API Anthropic</h3>
+      <div class="ai-row">
+        <span class="ai-status" id="ai-key-status">Nenhuma chave configurada nesta aba</span>
+        <button id="ai-btn-set-key">Definir chave</button>
+        <button id="ai-btn-clear-key" class="hidden">Limpar</button>
+      </div>
+      <div id="ai-key-input-row" class="hidden">
+        <input type="password" id="ai-key-input" placeholder="sk-ant-...">
+        <div class="ai-row" style="margin-top:6px">
+          <label style="font-size:12px;color:var(--text-muted)">
+            <input type="checkbox" id="ai-key-remember">
+            Lembrar nesta aba (sessionStorage — limpa ao fechar)
+          </label>
+          <button id="ai-btn-save-key" class="primary" style="margin-left:auto">Salvar</button>
+        </div>
+        <p style="font-size:12px;color:var(--warning);margin:6px 0 0">
+          A chave é guardada só no seu browser. As chamadas vão direto do
+          browser à API da Anthropic — qualquer pessoa com acesso ao DevTools
+          desta aba consegue ver. Para chaves sensíveis, prefira a CLI Python.
+        </p>
+      </div>
+    </div>
+
+    <div class="ai-panel">
+      <h3>2. Propor árvore de categorias</h3>
+      <div class="ai-row">
+        <span class="ai-status" id="ai-tax-status">Nenhuma taxonomia gerada</span>
+        <button id="ai-btn-propose">Propor árvore</button>
+        <button id="ai-btn-edit-tax" class="hidden">Editar JSON</button>
+      </div>
+      <div id="ai-tax-edit" class="hidden">
+        <textarea id="ai-tax-textarea" spellcheck="false"></textarea>
+        <div class="ai-row" style="margin-top:6px">
+          <span class="ai-status" id="ai-tax-edit-status"></span>
+          <button id="ai-btn-tax-cancel">Cancelar</button>
+          <button id="ai-btn-tax-save" class="primary">Salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ai-panel">
+      <h3>3. Categorizar bookmarks</h3>
+      <div class="ai-row">
+        <span class="ai-status" id="ai-cat-status">Aguardando taxonomia</span>
+        <button id="ai-btn-categorize" class="primary" disabled>Aplicar IA</button>
+      </div>
+      <div class="ai-progress hidden" id="ai-progress-wrap">
+        <div class="ai-progress-bar" id="ai-progress-bar"></div>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button id="ai-modal-close">Fechar</button>
     </div>
   </div>
 </div>
@@ -933,29 +1058,56 @@ function buildChromeBookmarks(state) {
     grouped.get(bm.category).push(bm);
   }
 
+  // Categorias podem ser hierárquicas via "Pai > Filho" — gera pastas aninhadas.
+  function bookmarkToNode(bm) {
+    const node = { type: 'url', name: bm.name, url: bm.url };
+    if (bm.originalId) node.id = bm.originalId;
+    if (bm.dateAdded) node.date_added = bm.dateAdded;
+    if (bm.guid) node.guid = bm.guid;
+    return node;
+  }
+
+  function ensureFolder(parentFolders, name) {
+    let f = parentFolders.find(x => x.type === 'folder' && x.name === name);
+    if (!f) {
+      f = { type: 'folder', name, children: [] };
+      parentFolders.push(f);
+    }
+    return f;
+  }
+
+  function countLeaves(folder) {
+    let n = 0;
+    for (const c of folder.children) {
+      if (c.type === 'url') n++;
+      else if (c.type === 'folder') n += countLeaves(c);
+    }
+    return n;
+  }
+
   const folders = [];
   for (const [name, list] of grouped) {
     if (!list.length) continue;
     const sorted = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    folders.push({
-      type: 'folder',
-      name,
-      children: sorted.map(bm => {
-        const node = { type: 'url', name: bm.name, url: bm.url };
-        if (bm.originalId) node.id = bm.originalId;
-        if (bm.dateAdded) node.date_added = bm.dateAdded;
-        if (bm.guid) node.guid = bm.guid;
-        return node;
-      }),
-    });
+    const parts = name.split(' > ').map(s => s.trim()).filter(Boolean);
+    if (parts.length === 0) continue;
+
+    // Navega/cria a hierarquia
+    let level = folders;
+    let current = null;
+    for (const part of parts) {
+      current = ensureFolder(level, part);
+      level = current.children;
+    }
+    for (const bm of sorted) current.children.push(bookmarkToNode(bm));
   }
 
-  // "Outros" sempre por último
+  // Ordenação no nível raiz: "Outros" por último; demais por quantidade desc.
   folders.sort((a, b) => {
     const aOther = a.name === CATEGORY_OTHER ? 1 : 0;
     const bOther = b.name === CATEGORY_OTHER ? 1 : 0;
     if (aOther !== bOther) return aOther - bOther;
-    return b.children.length - a.children.length;
+    return countLeaves(b) - countLeaves(a);
   });
 
   return {
@@ -1479,7 +1631,7 @@ function toast(message, type = '') {
  * Controles e ações de UI
  * ================================================================ */
 function enableControls(enabled) {
-  for (const id of ['search', 'btn-recategorize', 'btn-dedupe', 'btn-add-category',
+  for (const id of ['search', 'btn-recategorize', 'btn-ai', 'btn-dedupe', 'btn-add-category',
                     'btn-reload', 'btn-export']) {
     document.getElementById(id).disabled = !enabled;
   }
@@ -1537,6 +1689,572 @@ function toggleTheme() {
   else document.documentElement.setAttribute('data-theme', 'light');
   document.getElementById('btn-theme').textContent = next === 'light' ? '☀' : '☾';
   try { localStorage.setItem('theme', next); } catch { /* ignore */ }
+}
+
+/* ================================================================
+ * IA — categorização via Claude (browser → API direto)
+ * ================================================================
+ * IMPORTANTE: a chave da API fica somente no browser do usuário
+ * (memória ou sessionStorage). Todas as chamadas usam o header
+ * `anthropic-dangerous-direct-browser-access: true` e vão direto
+ * para api.anthropic.com — nenhum servidor intermediário.
+ */
+
+const AI_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+const AI_VERSION = '2023-06-01';
+const AI_MODELS = {
+  taxonomy: 'claude-opus-4-7',
+  categorize: 'claude-haiku-4-5-20251001',
+};
+const AI_PRICING = {
+  'claude-opus-4-7': { input: 15.00, output: 75.00 },
+  'claude-haiku-4-5-20251001': { input: 1.00, output: 5.00 },
+};
+const AI_BATCH_SIZE = 30;
+const AI_CONCURRENCY = 5;
+const AI_SAMPLE_MAX = 500;
+
+const ai = {
+  apiKey: null,                  // memória
+  taxonomy: null,                // { categories: [{name, description, subcategories: [{name,description}]}] }
+  usage: { input: 0, output: 0, cost: 0 },
+};
+
+function aiGetKey() {
+  if (ai.apiKey) return ai.apiKey;
+  try {
+    const k = sessionStorage.getItem('anthropic_api_key');
+    if (k) { ai.apiKey = k; return k; }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function aiSetKey(key, remember) {
+  ai.apiKey = key;
+  if (remember) {
+    try { sessionStorage.setItem('anthropic_api_key', key); } catch { /* ignore */ }
+  }
+}
+
+function aiClearKey() {
+  ai.apiKey = null;
+  try { sessionStorage.removeItem('anthropic_api_key'); } catch { /* ignore */ }
+}
+
+function aiDomainOf(url) {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h.startsWith('www.') ? h.slice(4) : h;
+  } catch { return ''; }
+}
+
+function aiStratifiedSample(bookmarks, maxSize) {
+  if (bookmarks.length <= maxSize) return bookmarks.slice();
+  // Round-robin por domínio para garantir variedade.
+  const byDomain = new Map();
+  for (const bm of bookmarks) {
+    const d = aiDomainOf(bm.url) || '_unknown';
+    if (!byDomain.has(d)) byDomain.set(d, []);
+    byDomain.get(d).push(bm);
+  }
+  const lists = [...byDomain.values()].map(l => {
+    // Embaralha cada lista
+    for (let i = l.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [l[i], l[j]] = [l[j], l[i]];
+    }
+    return l;
+  });
+  // Embaralha ordem dos domínios
+  for (let i = lists.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [lists[i], lists[j]] = [lists[j], lists[i]];
+  }
+  const sample = [];
+  while (sample.length < maxSize) {
+    let progressed = false;
+    for (const l of lists) {
+      if (l.length) {
+        sample.push(l.pop());
+        progressed = true;
+        if (sample.length >= maxSize) break;
+      }
+    }
+    if (!progressed) break;
+  }
+  return sample;
+}
+
+function aiFormatBookmarkLine(bm, idx) {
+  const name = (bm.name || '(sem título)').trim();
+  const domain = aiDomainOf(bm.url) || '(sem domínio)';
+  return idx == null ? `- ${name} :: ${domain}` : `[${idx}] ${name} :: ${domain}`;
+}
+
+function aiTrackUsage(usage, model) {
+  const price = AI_PRICING[model];
+  const inT = usage?.input_tokens || 0;
+  const outT = usage?.output_tokens || 0;
+  ai.usage.input += inT;
+  ai.usage.output += outT;
+  if (price) {
+    ai.usage.cost += inT / 1e6 * price.input + outT / 1e6 * price.output;
+  }
+}
+
+async function aiCallTool({ model, system, user, toolName, toolSchema, maxTokens, temperature, signal }) {
+  const key = aiGetKey();
+  if (!key) throw new Error('Chave da API não configurada');
+
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    temperature: temperature ?? 0.2,
+    system,
+    tools: [{ name: toolName, description: `Saída obrigatória de ${toolName}`, input_schema: toolSchema }],
+    tool_choice: { type: 'tool', name: toolName },
+    messages: [{ role: 'user', content: user }],
+  };
+
+  let attempt = 0;
+  const MAX_ATTEMPTS = 4;
+  while (true) {
+    attempt++;
+    const res = await fetch(AI_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': AI_VERSION,
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      aiTrackUsage(data.usage, model);
+      const block = (data.content || []).find(b => b.type === 'tool_use' && b.name === toolName);
+      if (!block) throw new Error(`Resposta sem tool_use (stop_reason=${data.stop_reason})`);
+      return block.input;
+    }
+
+    const status = res.status;
+    let errBody = '';
+    try { errBody = await res.text(); } catch { /* ignore */ }
+
+    if (status === 401) throw new Error('Chave da API inválida (401)');
+    if ((status === 429 || status >= 500) && attempt < MAX_ATTEMPTS) {
+      const wait = Math.min(2 ** attempt, 15) * 1000 + Math.random() * 1000;
+      await new Promise(r => setTimeout(r, wait));
+      continue;
+    }
+    throw new Error(`API erro ${status}: ${errBody.slice(0, 200)}`);
+  }
+}
+
+const AI_TAXONOMY_SYSTEM = (
+  'Você é um organizador especialista em curadoria de bookmarks. '
+  + 'Dada uma lista de bookmarks (nome + domínio), proponha uma árvore '
+  + 'de organização de até 2 níveis (categoria > subcategoria) que seja '
+  + 'específica e útil para ESSE conjunto, não uma taxonomia genérica. '
+  + 'Diretrizes:\n'
+  + '- Entre 6 e 12 categorias de nível 1.\n'
+  + '- Cada categoria deve ter entre 2 e 6 subcategorias, exceto quando '
+  + '  for muito específica e não comportar subdivisão (deixe lista vazia).\n'
+  + '- Nomes curtos (1-3 palavras), em português brasileiro.\n'
+  + '- Descrições de 1 frase explicando o escopo de cada categoria.\n'
+  + '- Inclua "Outros" como última categoria, sem subcategorias.\n'
+  + '- Evite sobreposição entre categorias.'
+);
+
+const AI_TAXONOMY_SCHEMA = {
+  type: 'object',
+  properties: {
+    categories: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          subcategories: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                description: { type: 'string' },
+              },
+              required: ['name'],
+            },
+          },
+        },
+        required: ['name', 'subcategories'],
+      },
+    },
+  },
+  required: ['categories'],
+};
+
+async function aiProposeTaxonomy(bookmarks, signal) {
+  const sample = aiStratifiedSample(bookmarks, AI_SAMPLE_MAX);
+  const lines = sample.map(bm => aiFormatBookmarkLine(bm));
+  const user = `Bookmarks (nome :: domínio):\n\n${lines.join('\n')}\n\nProponha agora a taxonomia.`;
+  const out = await aiCallTool({
+    model: AI_MODELS.taxonomy,
+    system: AI_TAXONOMY_SYSTEM,
+    user,
+    toolName: 'propose_taxonomy',
+    toolSchema: AI_TAXONOMY_SCHEMA,
+    maxTokens: 4000,
+    temperature: 0.3,
+    signal,
+  });
+  return aiNormalizeTaxonomy(out);
+}
+
+function aiNormalizeTaxonomy(raw) {
+  const cats = [];
+  for (const c of (raw.categories || [])) {
+    const name = (c.name || '').trim();
+    if (!name) continue;
+    const subs = [];
+    for (const s of (c.subcategories || [])) {
+      const sn = (s.name || '').trim();
+      if (sn) subs.push({ name: sn, description: (s.description || '').trim() });
+    }
+    cats.push({
+      name,
+      description: (c.description || '').trim(),
+      subcategories: subs,
+    });
+  }
+  // Garante "Outros" no fim
+  if (!cats.some(c => c.name.toLowerCase() === 'outros')) {
+    cats.push({ name: 'Outros', description: 'Sem encaixe nas demais', subcategories: [] });
+  }
+  return { categories: cats };
+}
+
+const AI_CATEGORIZE_SYSTEM = (
+  'Você é um classificador de bookmarks. Para cada item da lista, '
+  + 'escolha exatamente uma categoria e uma subcategoria da taxonomia '
+  + 'fornecida. Diretrizes:\n'
+  + '- Use SEMPRE nomes exatos da taxonomia (categoria e subcategoria).\n'
+  + '- Se a categoria escolhida não tiver subcategorias, retorne '
+  + '  subcategory="" (string vazia).\n'
+  + '- Se nenhuma categoria couber, use category="Outros" com '
+  + '  subcategory="".\n'
+  + '- Responda para TODOS os índices do batch, sem omitir nenhum.'
+);
+
+function aiFormatTaxonomyForPrompt(tax) {
+  const lines = ['Categorias disponíveis (categoria > subcategoria):'];
+  for (const c of tax.categories) {
+    if (c.subcategories.length) {
+      for (const s of c.subcategories) {
+        const d = s.description ? ` — ${s.description}` : '';
+        lines.push(`- ${c.name} > ${s.name}${d}`);
+      }
+    } else {
+      const d = c.description ? ` — ${c.description}` : '';
+      lines.push(`- ${c.name}${d}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function aiBuildCategorizeSchema(tax) {
+  return {
+    type: 'object',
+    properties: {
+      assignments: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            idx: { type: 'integer' },
+            category: { type: 'string', enum: tax.categories.map(c => c.name) },
+            subcategory: { type: 'string' },
+          },
+          required: ['idx', 'category', 'subcategory'],
+        },
+      },
+    },
+    required: ['assignments'],
+  };
+}
+
+function aiResolvePath(tax, category, subcategory) {
+  const norm = s => (s || '').trim().toLowerCase();
+  const cat = tax.categories.find(c => norm(c.name) === norm(category));
+  if (!cat) return ['Outros', ''];
+  if (!cat.subcategories.length) return [cat.name, ''];
+  if (!subcategory) return [cat.name, cat.subcategories[0].name];
+  const sub = cat.subcategories.find(s => norm(s.name) === norm(subcategory));
+  return [cat.name, sub ? sub.name : cat.subcategories[0].name];
+}
+
+async function aiCategorizeBatch(batch, tax, schema, signal) {
+  const taxBlock = aiFormatTaxonomyForPrompt(tax);
+  const itemsBlock = batch.map(([idx, bm]) => aiFormatBookmarkLine(bm, idx)).join('\n');
+  const user = `${taxBlock}\n\nBookmarks para classificar:\n${itemsBlock}\n\nClassifique todos os itens acima.`;
+  const out = await aiCallTool({
+    model: AI_MODELS.categorize,
+    system: AI_CATEGORIZE_SYSTEM,
+    user,
+    toolName: 'assign_categories',
+    toolSchema: schema,
+    maxTokens: 1500,
+    temperature: 0.1,
+    signal,
+  });
+  return Array.isArray(out.assignments) ? out.assignments : [];
+}
+
+async function aiCategorizeAll(bookmarks, tax, onProgress, signal) {
+  const schema = aiBuildCategorizeSchema(tax);
+  const indexed = bookmarks.map((bm, i) => [i, bm]);
+  const batches = [];
+  for (let i = 0; i < indexed.length; i += AI_BATCH_SIZE) {
+    batches.push(indexed.slice(i, i + AI_BATCH_SIZE));
+  }
+
+  const assignments = new Map();
+  let done = 0;
+  let nextBatch = 0;
+
+  async function worker() {
+    while (true) {
+      const i = nextBatch++;
+      if (i >= batches.length) return;
+      try {
+        const result = await aiCategorizeBatch(batches[i], tax, schema, signal);
+        for (const a of result) {
+          const idx = Number(a.idx);
+          if (Number.isInteger(idx) && idx >= 0 && idx < bookmarks.length) {
+            assignments.set(idx, aiResolvePath(tax, a.category, a.subcategory));
+          }
+        }
+      } catch (e) {
+        if (e.name === 'AbortError') throw e;
+        console.warn(`Batch ${i} falhou: ${e.message}`);
+      }
+      done++;
+      if (onProgress) onProgress(done, batches.length);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(AI_CONCURRENCY, batches.length) }, worker));
+
+  // Itens sem assignment caem em Outros
+  for (let i = 0; i < bookmarks.length; i++) {
+    if (!assignments.has(i)) assignments.set(i, ['Outros', '']);
+  }
+  return assignments;
+}
+
+function aiApplyAssignments(assignments, tax) {
+  pushHistory();
+  // Para cada bookmark, sobrescreve sua categoria.
+  state.bookmarks.forEach((bm, i) => {
+    const [cat, sub] = assignments.get(i) || ['Outros', ''];
+    bm.category = sub ? `${cat} > ${sub}` : cat;
+  });
+
+  // Reordena: respeita a ordem da taxonomia, com subcategorias agrupadas.
+  const newOrder = [];
+  for (const c of tax.categories) {
+    if (c.subcategories.length) {
+      for (const s of c.subcategories) newOrder.push(`${c.name} > ${s.name}`);
+    } else {
+      newOrder.push(c.name);
+    }
+  }
+  const present = new Set(state.bookmarks.map(b => b.category));
+  state.categoryOrder = newOrder.filter(n => present.has(n));
+  // Categorias órfãs no fim
+  for (const bm of state.bookmarks) {
+    if (!state.categoryOrder.includes(bm.category)) state.categoryOrder.push(bm.category);
+  }
+  render();
+}
+
+/* === UI do modal de IA === */
+
+let aiCurrentAbort = null;
+
+function aiOpenModal() {
+  aiRefreshUI();
+  document.getElementById('ai-modal-backdrop').classList.remove('hidden');
+}
+
+function aiCloseModal() {
+  if (aiCurrentAbort) {
+    aiCurrentAbort.abort();
+    aiCurrentAbort = null;
+  }
+  document.getElementById('ai-modal-backdrop').classList.add('hidden');
+  document.getElementById('ai-key-input-row').classList.add('hidden');
+  document.getElementById('ai-tax-edit').classList.add('hidden');
+  document.getElementById('ai-progress-wrap').classList.add('hidden');
+}
+
+function aiRefreshUI() {
+  const keyStatus = document.getElementById('ai-key-status');
+  const clearBtn = document.getElementById('ai-btn-clear-key');
+  const setBtn = document.getElementById('ai-btn-set-key');
+  if (aiGetKey()) {
+    keyStatus.textContent = 'Chave configurada (apenas neste browser)';
+    keyStatus.className = 'ai-status ok';
+    clearBtn.classList.remove('hidden');
+    setBtn.textContent = 'Trocar';
+  } else {
+    keyStatus.textContent = 'Nenhuma chave configurada nesta aba';
+    keyStatus.className = 'ai-status warn';
+    clearBtn.classList.add('hidden');
+    setBtn.textContent = 'Definir chave';
+  }
+
+  const taxStatus = document.getElementById('ai-tax-status');
+  const editBtn = document.getElementById('ai-btn-edit-tax');
+  const catBtn = document.getElementById('ai-btn-categorize');
+  if (ai.taxonomy) {
+    const subs = ai.taxonomy.categories.reduce((s, c) => s + Math.max(c.subcategories.length, 1), 0);
+    taxStatus.textContent = `${ai.taxonomy.categories.length} categorias, ${subs} entradas (incluindo sub)`;
+    taxStatus.className = 'ai-status ok';
+    editBtn.classList.remove('hidden');
+    catBtn.disabled = !aiGetKey();
+    document.getElementById('ai-cat-status').textContent = catBtn.disabled
+      ? 'Configure a chave para categorizar'
+      : `Pronto para categorizar ${state.bookmarks.length} bookmarks`;
+  } else {
+    taxStatus.textContent = 'Nenhuma taxonomia gerada';
+    taxStatus.className = 'ai-status warn';
+    editBtn.classList.add('hidden');
+    catBtn.disabled = true;
+    document.getElementById('ai-cat-status').textContent = 'Aguardando taxonomia';
+  }
+
+  document.getElementById('ai-btn-propose').disabled = !aiGetKey() || !state.bookmarks.length;
+}
+
+function aiShowKeyInput() {
+  document.getElementById('ai-key-input').value = '';
+  document.getElementById('ai-key-input-row').classList.remove('hidden');
+  document.getElementById('ai-key-input').focus();
+}
+
+function aiSaveKeyFromInput() {
+  const input = document.getElementById('ai-key-input');
+  const key = input.value.trim();
+  if (!key) return;
+  if (!key.startsWith('sk-ant-')) {
+    toast('Chave parece inválida (deve começar com sk-ant-)', 'warning');
+    return;
+  }
+  const remember = document.getElementById('ai-key-remember').checked;
+  aiSetKey(key, remember);
+  input.value = '';
+  document.getElementById('ai-key-input-row').classList.add('hidden');
+  toast('Chave salva', 'success');
+  aiRefreshUI();
+}
+
+async function aiRunPropose() {
+  if (!aiGetKey()) { toast('Configure a chave primeiro', 'warning'); return; }
+  if (!state.bookmarks.length) return;
+
+  const status = document.getElementById('ai-tax-status');
+  const btn = document.getElementById('ai-btn-propose');
+  btn.disabled = true;
+  status.textContent = 'Chamando Opus 4.7…';
+  status.className = 'ai-status';
+
+  aiCurrentAbort = new AbortController();
+  try {
+    const tax = await aiProposeTaxonomy(state.bookmarks, aiCurrentAbort.signal);
+    ai.taxonomy = tax;
+    toast(`Taxonomia gerada: ${tax.categories.length} categorias`, 'success');
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      toast('Cancelado', 'warning');
+    } else {
+      toast(`Erro: ${e.message}`, 'danger');
+    }
+  } finally {
+    aiCurrentAbort = null;
+    btn.disabled = false;
+    aiRefreshUI();
+  }
+}
+
+function aiShowEditTax() {
+  if (!ai.taxonomy) return;
+  document.getElementById('ai-tax-textarea').value = JSON.stringify(ai.taxonomy, null, 2);
+  document.getElementById('ai-tax-edit-status').textContent = '';
+  document.getElementById('ai-tax-edit').classList.remove('hidden');
+}
+
+function aiSaveEditedTax() {
+  const ta = document.getElementById('ai-tax-textarea');
+  const status = document.getElementById('ai-tax-edit-status');
+  try {
+    const parsed = JSON.parse(ta.value);
+    if (!parsed || !Array.isArray(parsed.categories)) throw new Error('Esperado { categories: [...] }');
+    ai.taxonomy = aiNormalizeTaxonomy(parsed);
+    document.getElementById('ai-tax-edit').classList.add('hidden');
+    toast('Taxonomia atualizada', 'success');
+    aiRefreshUI();
+  } catch (e) {
+    status.textContent = `JSON inválido: ${e.message}`;
+    status.className = 'ai-status warn';
+  }
+}
+
+async function aiRunCategorize() {
+  if (!aiGetKey() || !ai.taxonomy || !state.bookmarks.length) return;
+
+  const status = document.getElementById('ai-cat-status');
+  const wrap = document.getElementById('ai-progress-wrap');
+  const bar = document.getElementById('ai-progress-bar');
+  const btn = document.getElementById('ai-btn-categorize');
+
+  btn.disabled = true;
+  wrap.classList.remove('hidden');
+  bar.style.width = '0%';
+  status.textContent = 'Categorizando…';
+  status.className = 'ai-status';
+
+  aiCurrentAbort = new AbortController();
+  try {
+    const assignments = await aiCategorizeAll(
+      state.bookmarks,
+      ai.taxonomy,
+      (done, total) => {
+        bar.style.width = `${(done / total) * 100}%`;
+        status.textContent = `Batch ${done}/${total}  ·  custo até agora: US$ ${ai.usage.cost.toFixed(4)}`;
+      },
+      aiCurrentAbort.signal,
+    );
+    aiApplyAssignments(assignments, ai.taxonomy);
+    toast(`Pronto. Custo total: US$ ${ai.usage.cost.toFixed(4)}`, 'success');
+    status.textContent = `Aplicado. Custo total acumulado: US$ ${ai.usage.cost.toFixed(4)}`;
+    status.className = 'ai-status ok';
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      toast('Cancelado', 'warning');
+    } else {
+      toast(`Erro: ${e.message}`, 'danger');
+    }
+    status.className = 'ai-status warn';
+    status.textContent = e.name === 'AbortError' ? 'Cancelado' : `Erro: ${e.message}`;
+  } finally {
+    aiCurrentAbort = null;
+    btn.disabled = false;
+  }
 }
 
 /* ================================================================
@@ -1598,6 +2316,30 @@ function init() {
   document.getElementById('btn-theme').addEventListener('click', toggleTheme);
   document.getElementById('btn-reload').addEventListener('click', reload);
   document.getElementById('btn-export').addEventListener('click', exportBookmarks);
+
+  // IA
+  document.getElementById('btn-ai').addEventListener('click', aiOpenModal);
+  document.getElementById('ai-modal-close').addEventListener('click', aiCloseModal);
+  document.getElementById('ai-modal-backdrop').addEventListener('click', e => {
+    if (e.target.id === 'ai-modal-backdrop') aiCloseModal();
+  });
+  document.getElementById('ai-btn-set-key').addEventListener('click', aiShowKeyInput);
+  document.getElementById('ai-btn-save-key').addEventListener('click', aiSaveKeyFromInput);
+  document.getElementById('ai-key-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') aiSaveKeyFromInput();
+  });
+  document.getElementById('ai-btn-clear-key').addEventListener('click', () => {
+    aiClearKey();
+    toast('Chave removida', 'success');
+    aiRefreshUI();
+  });
+  document.getElementById('ai-btn-propose').addEventListener('click', aiRunPropose);
+  document.getElementById('ai-btn-edit-tax').addEventListener('click', aiShowEditTax);
+  document.getElementById('ai-btn-tax-cancel').addEventListener('click', () => {
+    document.getElementById('ai-tax-edit').classList.add('hidden');
+  });
+  document.getElementById('ai-btn-tax-save').addEventListener('click', aiSaveEditedTax);
+  document.getElementById('ai-btn-categorize').addEventListener('click', aiRunCategorize);
 
   // Search
   const searchInput = document.getElementById('search');
