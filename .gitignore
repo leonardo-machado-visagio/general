@@ -12,3 +12,4 @@ venv/
 raw_results.json
 distribuicao.xlsx
 distribuicao.html
+sim.log
