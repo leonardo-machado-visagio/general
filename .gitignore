@@ -8,8 +8,5 @@ venv/
 *.egg-info/
 .DS_Store
 
-# Artefatos gerados pela simulação de autocomplete
-raw_results.json
-distribuicao.xlsx
-distribuicao.html
+# Logs de runtime
 sim.log
