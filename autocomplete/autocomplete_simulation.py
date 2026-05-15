@@ -39,11 +39,12 @@ QUESTIONS = {
     "Q3_muito_contexto": "Após o inquilino purgar a mora dentro do prazo legal, a ação de despejo foi",
 }
 
-N_PER_QUESTION = 10000
+N_PER_QUESTION = int(os.environ.get("N_PER_QUESTION", "10000"))
 CONCURRENCY = 50
 MAX_RETRIES = 5
-MAX_TOKENS = 5
+MAX_TOKENS = 15
 TEMPERATURE = 1.0
+STOP_SEQUENCES = []
 
 PRIMARY_MODEL = "claude-haiku-4-5-20251001"
 FALLBACK_MODEL = "claude-haiku-4-5-20251001"
@@ -125,7 +126,7 @@ async def call_one(client, model, prefill, semaphore, progress):
         last_error = None
         for attempt in range(MAX_RETRIES):
             try:
-                response = await client.messages.create(
+                kwargs = dict(
                     model=model,
                     max_tokens=MAX_TOKENS,
                     temperature=TEMPERATURE,
@@ -134,6 +135,9 @@ async def call_one(client, model, prefill, semaphore, progress):
                         {"role": "assistant", "content": prefill},
                     ],
                 )
+                if STOP_SEQUENCES:
+                    kwargs["stop_sequences"] = STOP_SEQUENCES
+                response = await client.messages.create(**kwargs)
                 text = response.content[0].text if response.content else ""
                 await progress.tick()
                 return text
