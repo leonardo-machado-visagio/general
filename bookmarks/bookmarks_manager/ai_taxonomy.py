@@ -31,7 +31,8 @@ from bookmarks_manager.taxonomy import (
 TAXONOMY_MODEL = "claude-opus-4-7"
 TAXONOMY_SAMPLE_MAX = 500
 TAXONOMY_MAX_TOKENS = 4000
-TAXONOMY_TEMPERATURE = 0.3
+# Opus 4.7 não aceita o parâmetro temperature; deixamos None para omitir.
+TAXONOMY_TEMPERATURE: float | None = None
 
 _SYSTEM = (
     "Você é um organizador especialista em curadoria de bookmarks. "

@@ -93,7 +93,7 @@ async def call_tool_use(
     tool_name: str,
     tool_schema: dict,
     max_tokens: int,
-    temperature: float = 0.2,
+    temperature: float | None = 0.2,
     usage: UsageTracker | None = None,
 ):
     """Chama messages.create forçando o modelo a usar a tool indicada.
@@ -113,19 +113,24 @@ async def call_tool_use(
         "input_schema": tool_schema,
     }
 
+    # Opus 4.7 removeu temperature/top_p/top_k — só envia quando explicitamente
+    # pedido (Haiku ainda aceita).
+    create_kwargs = dict(
+        model=model,
+        max_tokens=max_tokens,
+        system=system,
+        tools=[tool],
+        tool_choice={"type": "tool", "name": tool_name},
+        messages=[{"role": "user", "content": user_content}],
+    )
+    if temperature is not None:
+        create_kwargs["temperature"] = temperature
+
     last_error: Exception | None = None
     for attempt in range(MAX_RETRIES):
         try:
             response = await asyncio.wait_for(
-                client.messages.create(
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    system=system,
-                    tools=[tool],
-                    tool_choice={"type": "tool", "name": tool_name},
-                    messages=[{"role": "user", "content": user_content}],
-                ),
+                client.messages.create(**create_kwargs),
                 timeout=CALL_TIMEOUT_S,
             )
             if usage is not None:

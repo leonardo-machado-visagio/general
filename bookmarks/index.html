@@ -1809,12 +1809,16 @@ async function aiCallTool({ model, system, user, toolName, toolSchema, maxTokens
   const body = {
     model,
     max_tokens: maxTokens,
-    temperature: temperature ?? 0.2,
     system,
     tools: [{ name: toolName, description: `Saída obrigatória de ${toolName}`, input_schema: toolSchema }],
     tool_choice: { type: 'tool', name: toolName },
     messages: [{ role: 'user', content: user }],
   };
+  // Opus 4.7 removeu temperature/top_p/top_k — só envia quando explicitamente
+  // pedido (Haiku ainda aceita).
+  if (temperature !== undefined && temperature !== null) {
+    body.temperature = temperature;
+  }
 
   let attempt = 0;
   const MAX_ATTEMPTS = 4;
@@ -1909,7 +1913,7 @@ async function aiProposeTaxonomy(bookmarks, signal) {
     toolName: 'propose_taxonomy',
     toolSchema: AI_TAXONOMY_SCHEMA,
     maxTokens: 4000,
-    temperature: 0.3,
+    // Opus 4.7 não aceita temperature; omitido propositalmente.
     signal,
   });
   return aiNormalizeTaxonomy(out);
